@@ -39,8 +39,9 @@ export interface ClaimDraft {
   reportedAt: number;
 }
 
-const MAX_ITEMS_PER_RUN = 25;
-const MAX_ARTICLE_AGE_MS = 24 * 60 * 60 * 1000;
+const MAX_ITEMS_PER_RUN = 8;
+const MAX_PARSED_BLOCKS = 120;
+const MAX_ARTICLE_AGE_MS = 48 * 60 * 60 * 1000;
 const DRAFT_TTL_SECONDS = 72 * 60 * 60;
 const SEEN_TTL_SECONDS = 7 * 24 * 60 * 60;
 
@@ -53,7 +54,8 @@ const CORS_HEADERS = {
 /** Minimal RSS <item> parser — Workers have no DOMParser. */
 function parseRssItems(xml: string): { title: string; link: string; pubDate: number }[] {
   const items: { title: string; link: string; pubDate: number }[] = [];
-  const itemBlocks = xml.match(/<item>[\s\S]*?<\/item>/g) ?? [];
+  // Cap parsing work — free-tier Workers have a tight CPU budget.
+  const itemBlocks = (xml.match(/<item>[\s\S]*?<\/item>/g) ?? []).slice(0, MAX_PARSED_BLOCKS);
   for (const block of itemBlocks) {
     const title = block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/)?.[1]?.trim();
     const link = block.match(/<link>([\s\S]*?)<\/link>/)?.[1]?.trim();
@@ -100,36 +102,45 @@ const FEED_HEADERS = {
   accept: 'application/rss+xml, application/xml, text/xml',
 };
 
-/** Collects fresh, unseen feed items across all tracked journalists. */
+/**
+ * Collects fresh, unseen feed items for ONE journalist per run, rotating
+ * through the roster via a KV cursor — the free tier's CPU budget cannot
+ * sweep all fifteen feeds in a single invocation.
+ */
 async function collectFreshItems(env: Env, now: number): Promise<FeedItem[]> {
+  const cursor = Number((await env.INGEST_KV.get('cursor')) ?? '0') % journalists.length;
+  const journalist = journalists[cursor];
+  await env.INGEST_KV.put('cursor', String(cursor + 1));
+  if (!journalist) {
+    return [];
+  }
   const fresh: FeedItem[] = [];
-  for (const journalist of journalists) {
-    try {
-      const response = await fetch(feedUrlFor(journalist.name), { headers: FEED_HEADERS });
-      if (!response.ok) {
+  try {
+    const response = await fetch(feedUrlFor(journalist.name), { headers: FEED_HEADERS });
+    if (!response.ok) {
+      console.error(`Feed ${response.status} for ${journalist.name}`);
+      return [];
+    }
+    const xml = await response.text();
+    for (const item of parseRssItems(xml)) {
+      if (fresh.length >= MAX_ITEMS_PER_RUN || now - item.pubDate > MAX_ARTICLE_AGE_MS) {
         continue;
       }
-      const xml = await response.text();
-      for (const item of parseRssItems(xml)) {
-        if (now - item.pubDate > MAX_ARTICLE_AGE_MS) {
-          continue;
-        }
-        const seenKey = `seen:${await sha1(item.link)}`;
-        if (await env.INGEST_KV.get(seenKey)) {
-          continue;
-        }
-        await env.INGEST_KV.put(seenKey, '1', { expirationTtl: SEEN_TTL_SECONDS });
-        fresh.push({
-          journalistId: journalist.id,
-          journalistName: journalist.name,
-          ...item,
-        });
+      const seenKey = `seen:${await sha1(item.link)}`;
+      if (await env.INGEST_KV.get(seenKey)) {
+        continue;
       }
-    } catch (error) {
-      console.error(`Feed failed for ${journalist.name}`, error);
+      await env.INGEST_KV.put(seenKey, '1', { expirationTtl: SEEN_TTL_SECONDS });
+      fresh.push({
+        journalistId: journalist.id,
+        journalistName: journalist.name,
+        ...item,
+      });
     }
+  } catch (error) {
+    console.error(`Feed failed for ${journalist.name}`, error);
   }
-  return fresh.slice(0, MAX_ITEMS_PER_RUN);
+  return fresh;
 }
 
 const EXTRACTION_PROMPT = `You extract football transfer claims from news headlines for a journalist-reliability tracker.
@@ -173,14 +184,15 @@ async function runModel(env: Env, userContent: string): Promise<string> {
     const body = (await response.json()) as { content: { type: string; text?: string }[] };
     return body.content.find((c) => c.type === 'text')?.text ?? '[]';
   }
-  const result = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+  const result = await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
     messages: [
       { role: 'system', content: EXTRACTION_PROMPT },
       { role: 'user', content: userContent },
     ],
     max_tokens: 2000,
   });
-  return result.response ?? '[]';
+  // Some models return the payload as an already-parsed object.
+  return typeof result.response === 'string' ? result.response : JSON.stringify(result.response ?? []);
 }
 
 /** Asks the model to turn raw headlines into structured claim drafts. */
@@ -302,7 +314,7 @@ export default {
         debug.feedError = String(error);
       }
       try {
-        const ai = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+        const ai = await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
           messages: [{ role: 'user', content: 'Reply with exactly: OK' }],
           max_tokens: 10,
         });

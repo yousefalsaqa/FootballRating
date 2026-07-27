@@ -2,9 +2,9 @@ name = "journalist-rater-ingest"
 main = "src/index.ts"
 compatibility_date = "2026-07-01"
 
-# Poll the news feeds every 10 minutes.
+# One journalist per cycle (free-tier CPU budget); full roster sweep ≈ 75 min.
 [triggers]
-crons = ["*/10 * * * *"]
+crons = ["*/5 * * * *"]
 
 [[kv_namespaces]]
 binding = "INGEST_KV"

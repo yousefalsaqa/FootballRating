@@ -8,6 +8,7 @@ import { newId } from '@/lib/id';
 
 const HANDLE_BACKFILL_FLAG = 'seeded.handles.v2';
 const DEMO_CLAIMS_V2_FLAG = 'seeded.demo-claims.v2';
+const DEMO_CLAIMS_V3_FLAG = 'seeded.demo-claims.v3';
 
 /**
  * Seed ids are FIXED strings (not per-install UUIDs) so exports from one
@@ -152,6 +153,34 @@ const SEED_CLAIMS_V2: SeedClaim[] = [
   },
 ];
 
+/** Later-verified additions (real, sourced) — applied on top of the v2 wire. */
+const SEED_CLAIMS_V3: SeedClaim[] = [
+  {
+    journalistId: 'seed-fabrizio-romano',
+    headline: 'Tonali chooses Tottenham — £92.5m deal agreed with Newcastle',
+    playerName: 'Sandro Tonali',
+    fromClubName: 'Newcastle',
+    toClubName: 'Tottenham',
+    league: 'Premier League',
+    confidence: 3,
+    sourceUrl: 'https://www.caughtoffside.com/2026/07/01/sandro-tonali-tottenham-fabrizio-romano/',
+    claimedDaysAgo: 42,
+    resolved: { outcome: 'true', daysAgo: 26 },
+  },
+  {
+    journalistId: 'seed-gianluca-di-marzio',
+    headline: 'Bournemouth trigger buy option for Álex Jiménez',
+    playerName: 'Álex Jiménez',
+    fromClubName: 'AC Milan',
+    toClubName: 'Bournemouth',
+    league: 'Premier League',
+    confidence: 2,
+    sourceUrl: 'https://www.caughtoffside.com/2026/07/23/premier-league-transfers-done-deals-2026/',
+    claimedDaysAgo: 10,
+    resolved: { outcome: 'true', daysAgo: 4 },
+  },
+];
+
 /** Headlines of the retired v1 fake demo set — deleted from seeded installs. */
 const V1_FAKE_HEADLINES = [
   'Haaland agreement with Real Madrid at advanced stage',
@@ -177,20 +206,12 @@ const V1_FAKE_HEADLINES = [
 
 const DAY_MS = 86_400_000;
 
-/** Replaces the retired fake wire with real, sourced claims. Runs once. */
-async function seedRealClaimsIfNeeded(now: number): Promise<void> {
-  if (await hasFlag(DEMO_CLAIMS_V2_FLAG)) {
-    return;
-  }
-  // Purge the v1 invented claims (only from seeded journalists, by exact headline).
-  await db
-    .delete(claims)
-    .where(and(like(claims.journalistId, 'seed-%'), inArray(claims.headline, V1_FAKE_HEADLINES)));
-
+/** Inserts seed claims whose headlines aren't already present. */
+async function insertClaimsIfMissing(batch: SeedClaim[], now: number): Promise<void> {
   const existingHeadlines = new Set(
     (await db.select({ headline: claims.headline }).from(claims)).map((r) => r.headline),
   );
-  const fresh = SEED_CLAIMS_V2.filter((c) => !existingHeadlines.has(c.headline));
+  const fresh = batch.filter((c) => !existingHeadlines.has(c.headline));
   if (fresh.length) {
     await db.insert(claims).values(
       fresh.map((c) => ({
@@ -212,7 +233,22 @@ async function seedRealClaimsIfNeeded(now: number): Promise<void> {
       })),
     );
   }
-  await db.insert(appMeta).values({ key: DEMO_CLAIMS_V2_FLAG, value: new Date(now).toISOString() });
+}
+
+/** Replaces the retired fake wire with real, sourced claims. Each batch runs once. */
+async function seedRealClaimsIfNeeded(now: number): Promise<void> {
+  if (!(await hasFlag(DEMO_CLAIMS_V2_FLAG))) {
+    // Purge the v1 invented claims (only from seeded journalists, by exact headline).
+    await db
+      .delete(claims)
+      .where(and(like(claims.journalistId, 'seed-%'), inArray(claims.headline, V1_FAKE_HEADLINES)));
+    await insertClaimsIfMissing(SEED_CLAIMS_V2, now);
+    await db.insert(appMeta).values({ key: DEMO_CLAIMS_V2_FLAG, value: new Date(now).toISOString() });
+  }
+  if (!(await hasFlag(DEMO_CLAIMS_V3_FLAG))) {
+    await insertClaimsIfMissing(SEED_CLAIMS_V3, now);
+    await db.insert(appMeta).values({ key: DEMO_CLAIMS_V3_FLAG, value: new Date(now).toISOString() });
+  }
 }
 
 /**
