@@ -336,23 +336,26 @@ export function LeaderboardScreen() {
       <Divider weight="strong" />
       <View style={{ height: 2 }} />
       <Divider />
-      {/* Section strip */}
+      {/* Section strip — the action button never wraps or shrinks; the middle
+          links give way (ellipsize) on narrow phones instead. */}
       <View
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          gap: space.lg,
+          gap: space.sm,
           paddingHorizontal: gutter,
           minHeight: 44,
         }}
       >
-        <Text variant="stamp" color="ink" style={{ textDecorationLine: 'underline' }}>
+        <Text variant="stamp" color="ink" style={{ textDecorationLine: 'underline', flexShrink: 0 }}>
           Rankings
         </Text>
         <Text
           variant="caption"
           color="inkSecondary"
           accessibilityRole="button"
+          numberOfLines={1}
+          style={{ flexShrink: 1 }}
           onPress={() => router.push('/methodology')}
         >
           Methodology
@@ -364,6 +367,7 @@ export function LeaderboardScreen() {
           accessibilityRole="button"
           accessibilityLabel={searchOpen ? 'Close search' : 'Open search'}
           numberOfLines={1}
+          style={{ flexShrink: 0 }}
           onPress={() => {
             setSearchOpen(!searchOpen);
             setSearch('');
@@ -375,15 +379,17 @@ export function LeaderboardScreen() {
           variant="stamp"
           color="ink"
           accessibilityRole="button"
+          numberOfLines={1}
           onPress={() => router.push('/claim/new')}
           style={{
+            flexShrink: 0,
             borderWidth: rules.medium,
             borderColor: colors.ink,
             paddingHorizontal: space.sm,
             paddingVertical: 4,
           }}
         >
-          {editor ? 'File a claim' : 'Submit a report'}
+          {editor ? 'File a claim' : 'Submit'}
         </Text>
       </View>
       {searchOpen ? (

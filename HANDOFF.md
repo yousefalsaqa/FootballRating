@@ -23,6 +23,16 @@ _Last updated: 2026-07-27 (third session)_
 - Back button: `HeaderBack` in root stack layout — always rendered; falls back to `router.replace('/')` when the stack is empty (refresh/deep-link).
 - Headless reader validation script: scratchpad readertest.mjs pattern (public ledger → claim/<id> deep link).
 
+## Fifth pass (same day): content + correctness
+
+- **Deletions propagate**: `claims.deletedAt` tombstone (migration 0004). deleteClaim soft-deletes; every list/count/scoring query filters `isNull(deletedAt)`; getClaim hides tombstones; wire filedKeys INCLUDE tombstones (deleted stories never re-file); same-id sync merge applies the newest of verdict/reopen/deletion. Dedupe hard-delete is fine (deterministic on synced data, converges through push cycles).
+- **Story identity normalized**: `claimStoryKey` now surname-based + accent/punctuation-insensitive ("Summerville"≡"Crysencio Summerville", "Al Hilal"≡"Al-Hilal", "Vinicius Jr"≡"Vinícius Júnior") — fixes duplicate stories per journalist.
+- **Roster is 23** (added Balagué, Galetti, Konur, Longari, Longo, Tanzi, Ben Ayad, Percy — real reporters, real handles; Bechler rejected: zero coverage). Seed top-up is by fixed id, reaches existing installs. **SEED_CLAIMS_V4**: 41 real claims backfilled from a curated two-week Google News sweep (feeds fetched per reporter; Bing rate-limited local IPs — use `news.google.com/rss/search?q="<name>" transfer when:16d` with curl, NOT node fetch which gets an empty shell).
+- **Resolver correctness**: extraction + /submit reject descriptive player names ("ex-Arsenal forward" — `isDescriptivePlayerName`); RESOLUTION_PROMPT now judges what the journalist ASSERTED — negative/hedged claims ("move unlikely") are true when the move dies; evidence items carry `daysAgo`, newest-first.
+- **Ledger surgery done via wrangler KV** (pull `ledger:data`, patch JSON, put back): tombstoned test/garbage claims, reopened 12 wrong-or-premature false/true verdicts (reopened = permanently manual by design). CAUTION: stale clients strip unknown snapshot fields on push — patch the ledger only after the matching app bundle is deployed, and verify the patch survives a few minutes later.
+- Front-page strip fixed for phones: no wrapping — action button (`File a claim`/`Submit`) never shrinks, middle links ellipsize; `Close ✕` uses a non-breaking space.
+- The editor passcode is NOT in the code: user-chosen at first sign-in, stored per-device in kv `sync.passcode`, server holds only sha1 in KV `ledger:keyhash`. To change: sign out everywhere → delete `ledger:keyhash` → first sign-in claims the new passcode.
+
 ## What this is now
 
 **THE TRANSFER LEDGER** — a football-newspaper-styled journalist reliability tracker with a fully automatic claim pipeline. Live web app: https://yousefalsaqa.github.io/FootballRating/ · Repo: https://github.com/yousefalsaqa/FootballRating (`main`, public). State: **74 tests green, typecheck + lint clean, web deploy verified via headless-browser screenshots.**

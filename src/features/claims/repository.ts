@@ -51,17 +51,44 @@ export async function getClaimTags(claimId: string): Promise<Tag[]> {
     .where(eq(claimTags.claimId, claimId));
 }
 
+/** Lowercase, accent-stripped, alphanumeric+space only. */
+function cleanName(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const NAME_SUFFIXES = new Set(['jr', 'junior', 'sr', 'senior', 'ii', 'iii']);
+
+/**
+ * A player's identity token: the surname, ignoring Jr/Sr-style suffixes —
+ * "Summerville", "Crysencio Summerville", "Vinícius Júnior" and "Vinicius Jr"
+ * all collapse to the same token.
+ */
+function playerKey(name: string): string {
+  const tokens = cleanName(name).split(' ');
+  while (tokens.length > 1 && NAME_SUFFIXES.has(tokens[tokens.length - 1] as string)) {
+    tokens.pop();
+  }
+  return tokens[tokens.length - 1] ?? '';
+}
+
 /**
  * Canonical story identity — one journalist reporting one player to one
- * destination within one window is ONE claim, however many articles cover it.
+ * destination within one window is ONE claim, however many articles (or
+ * spelling variants: "Al Hilal"/"Al-Hilal") cover it.
  */
 export function claimStoryKey(
   claim: Pick<Claim, 'journalistId' | 'playerName' | 'toClubName' | 'transferWindow'>,
 ): string {
   return [
     claim.journalistId,
-    claim.playerName.trim().toLowerCase(),
-    claim.toClubName.trim().toLowerCase(),
+    playerKey(claim.playerName),
+    cleanName(claim.toClubName).replace(/ /g, ''),
     claim.transferWindow,
   ].join('|');
 }

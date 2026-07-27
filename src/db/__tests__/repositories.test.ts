@@ -244,3 +244,28 @@ describe('ledger snapshot merge', () => {
     expect((await getClaim(claim.id))?.status).toBe('pending');
     await deleteJournalist(j.id);
   });
+
+describe('claimStoryKey normalization', () => {
+  const { claimStoryKey } = require('@/features/claims/repository');
+  test('collapses spelling variants of the same story', () => {
+    const base = { journalistId: 'j1', transferWindow: '2026-summer' };
+    expect(claimStoryKey({ ...base, playerName: 'Summerville', toClubName: 'Al Hilal' })).toBe(
+      claimStoryKey({ ...base, playerName: 'Crysencio Summerville', toClubName: 'Al-Hilal' }),
+    );
+    expect(claimStoryKey({ ...base, playerName: 'Vinicius Jr', toClubName: 'Arsenal' })).toBe(
+      claimStoryKey({ ...base, playerName: 'Vinícius Júnior', toClubName: 'Arsenal' }),
+    );
+  });
+  test('different players, clubs and journalists stay distinct', () => {
+    const base = { journalistId: 'j1', transferWindow: '2026-summer' };
+    expect(claimStoryKey({ ...base, playerName: 'Rodri', toClubName: 'Real Madrid' })).not.toBe(
+      claimStoryKey({ ...base, playerName: 'Rodrygo', toClubName: 'Real Madrid' }),
+    );
+    expect(claimStoryKey({ ...base, playerName: 'Barcola', toClubName: 'Liverpool' })).not.toBe(
+      claimStoryKey({ ...base, playerName: 'Barcola', toClubName: 'Arsenal' }),
+    );
+    expect(claimStoryKey({ ...base, playerName: 'Barcola', toClubName: 'Liverpool' })).not.toBe(
+      claimStoryKey({ journalistId: 'j2', transferWindow: '2026-summer', playerName: 'Barcola', toClubName: 'Liverpool' }),
+    );
+  });
+});

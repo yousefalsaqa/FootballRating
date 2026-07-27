@@ -192,13 +192,26 @@ Reply with ONLY a JSON array (no prose). For each item that IS a claim, include:
 {
   "index": number,
   "headline": string,        // concise claim restatement, max 90 chars
-  "playerName": string,
+  "playerName": string,      // the player's ACTUAL NAME — if the headline only describes the player ("ex-Arsenal forward", "Brighton star"), OMIT the item entirely
   "fromClubName": string|null,
   "toClubName": string,      // for contract renewals/stays, the current club
   "league": string|null,     // league of the destination club
   "confidence": 1|2|3        // 1 speculative/interest, 2 advanced/agreed-terms, 3 confirmed/"here we go"/done
 }
 Omit items that are not claims. If unsure, omit.`;
+
+/**
+ * Descriptive phrases are not player identities — "ex-Arsenal and Man Utd
+ * forward" filed as a player pollutes the record and duplicates the properly
+ * named claim once it emerges.
+ */
+function isDescriptivePlayerName(name: string): boolean {
+  return (
+    /\b(forward|striker|winger|midfielder|defender|keeper|goalkeeper|full-?back|wing-?back|player|star|target|wonderkid|starlet|international|captain)\b/i.test(
+      name,
+    ) || /^ex[- ]/i.test(name.trim())
+  );
+}
 
 /** Runs a prompt on Claude (if a key is set) or free Workers AI. */
 async function runModelWith(env: Env, systemPrompt: string, userContent: string): Promise<string> {
@@ -273,7 +286,8 @@ async function extractClaims(env: Env, items: FeedItem[]): Promise<ClaimDraft[]>
       typeof entry.headline !== 'string' ||
       typeof entry.playerName !== 'string' ||
       typeof entry.toClubName !== 'string' ||
-      ![1, 2, 3].includes(Number(entry.confidence))
+      ![1, 2, 3].includes(Number(entry.confidence)) ||
+      isDescriptivePlayerName(entry.playerName)
     ) {
       continue;
     }
@@ -311,6 +325,8 @@ For each claim decide the outcome from the balance of the evidence (evidence ite
 - "false": the evidence indicates it did not happen — the deal collapsed or was called off, the player joined a DIFFERENT club instead, or the story is weeks old and coverage clearly moved on to other destinations with no sign of the claimed move.
 - "partial": the essentials happened but materially different (loan instead of permanent, different terms, delayed to a later window).
 - "unknown": no meaningful evidence either way, or the story is clearly still live and developing right now.
+
+READ THE CLAIM CAREFULLY — some claims are NEGATIVE or hedged ("move unlikely", "not finalized", "staying", "rejected", "no talks"). A negative claim is "true" when the move indeed did NOT materialise (the player went elsewhere or stayed), and "false" when the move DID happen. Judge what the journalist actually asserted, not whether a transfer occurred.
 
 Prefer a definitive verdict when the evidence leans one way — this tracker depends on claims actually getting graded. Reserve "unknown" for genuinely open, still-developing stories or empty evidence.
 
