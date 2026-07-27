@@ -1,9 +1,12 @@
 import { Tabs } from 'expo-router';
 
+import { useAutoFileIncoming } from '@/features/inbox/hooks';
 import { useTheme } from '@/ui/theme';
 
 export default function TabsLayout() {
   const { colors, rules, type } = useTheme();
+  // Files fresh wire reports into the record automatically (toggle in Desk).
+  useAutoFileIncoming();
   return (
     <Tabs
       screenOptions={{

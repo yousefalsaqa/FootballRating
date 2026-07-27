@@ -106,6 +106,16 @@ export async function listScoringRows(): Promise<ScoringRow[]> {
   return rows.filter((r): r is ScoringRow => r.outcome !== null);
 }
 
+/** Total filed claims (any status) per journalist — for table sample sizes. */
+export async function listClaimCountsByJournalist(): Promise<Map<string, number>> {
+  const rows = await db.select({ journalistId: claims.journalistId }).from(claims);
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    counts.set(row.journalistId, (counts.get(row.journalistId) ?? 0) + 1);
+  }
+  return counts;
+}
+
 export async function listTags(): Promise<Tag[]> {
   return db.select().from(tags).orderBy(tags.name);
 }

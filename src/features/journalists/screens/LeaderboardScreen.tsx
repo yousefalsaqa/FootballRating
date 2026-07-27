@@ -23,7 +23,7 @@ function surnameOf(name: string): string {
 
 function recordLine(j: RankedJournalist): string {
   const r = j.stats.record;
-  return `${r.trueCount}–${r.partialCount}–${r.falseCount} · ${j.stats.resolvedCount} resolved`;
+  return `${r.trueCount}–${r.partialCount}–${r.falseCount} · ${j.stats.resolvedCount} of ${j.filedCount} resolved`;
 }
 
 function MovementText({ movement }: { movement: number }) {
@@ -296,11 +296,11 @@ export function LeaderboardScreen() {
       {searchOpen ? (
         <View style={{ paddingHorizontal: gutter, paddingBottom: space.md }}>
           <SearchInput
-            placeholder="Name, outlet, or paste an X link…"
+            placeholder="Search reporters, or paste an X / Instagram / Snap link…"
             value={search}
             onChangeText={setSearch}
             autoFocus
-            accessibilityLabel="Search journalists or paste a link"
+            accessibilityLabel="Search journalists or paste a social link"
           />
           {pastedHandle ? (
             handleMatch ? (

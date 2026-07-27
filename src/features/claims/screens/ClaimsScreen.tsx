@@ -9,6 +9,7 @@ import { ClaimRow } from '@/features/claims/components';
 import { useClaims, useResolveClaim } from '@/features/claims/hooks';
 import { IncomingRow } from '@/features/inbox/components';
 import { useAcceptIncoming, useInboxEnabled, useIncomingClaims } from '@/features/inbox/hooks';
+import { useSettingsStore } from '@/features/settings/store';
 import { useJournalists } from '@/features/journalists/hooks';
 import { Chip, Divider, EmptyState, Screen, SegmentedControl, Skeleton, Text } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
@@ -26,7 +27,8 @@ export function ClaimsScreen() {
   const journalistsQuery = useJournalists();
   const resolveMutation = useResolveClaim();
   const inbox = useIncomingClaims();
-  const acceptIncoming = useAcceptIncoming(inbox.dismiss);
+  const acceptIncoming = useAcceptIncoming();
+  const autoFile = useSettingsStore((s) => s.autoFileIncoming);
 
   const journalistNames = useMemo(() => {
     const map = new Map<string, string>();
@@ -108,7 +110,9 @@ export function ClaimsScreen() {
             message={
               inbox.isError
                 ? 'Could not reach the ingest service — check your connection.'
-                : 'New claims from tracked journalists appear here within minutes of being reported.'
+                : autoFile
+                  ? 'Fresh reports are filed into the record automatically. Turn auto-file off in the Desk tab to review them here first.'
+                  : 'New reports appear here as journalists publish. Unreviewed reports expire after 72 hours and never affect ratings.'
             }
           />
         ) : (

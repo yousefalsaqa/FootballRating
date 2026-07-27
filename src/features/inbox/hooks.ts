@@ -1,23 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { useCreateClaim } from '@/features/claims/hooks';
 import { fetchIncomingClaims, ingestUrl, type IncomingClaim } from '@/features/inbox/api';
+import { useInboxStore } from '@/features/inbox/store';
+import { useSettingsStore } from '@/features/settings/store';
 import { currentTransferWindow } from '@/lib/dates';
-import { kv } from '@/lib/kv';
 import { queryKeys } from '@/lib/query-client';
-
-const DISMISSED_KEY = 'inbox.dismissed';
-const DISMISSED_CAP = 300;
-
-function loadDismissed(): string[] {
-  try {
-    const raw = kv.getItemSync(DISMISSED_KEY);
-    return raw ? (JSON.parse(raw) as string[]) : [];
-  } catch {
-    return [];
-  }
-}
 
 /** Whether the ingest worker is configured — gates all inbox UI. */
 export function useInboxEnabled(): boolean {
@@ -27,7 +16,8 @@ export function useInboxEnabled(): boolean {
 /** Incoming claim drafts minus everything already handled locally. */
 export function useIncomingClaims() {
   const enabled = useInboxEnabled();
-  const [dismissed, setDismissed] = useState<string[]>(loadDismissed);
+  const dismissedIds = useInboxStore((s) => s.dismissedIds);
+  const dismiss = useInboxStore((s) => s.dismiss);
 
   const query = useQuery({
     queryKey: queryKeys.inbox.all,
@@ -38,25 +28,18 @@ export function useIncomingClaims() {
     retry: 1,
   });
 
-  const dismiss = useCallback((draftId: string) => {
-    setDismissed((current) => {
-      const next = [...current.filter((id) => id !== draftId), draftId].slice(-DISMISSED_CAP);
-      kv.setItemSync(DISMISSED_KEY, JSON.stringify(next));
-      return next;
-    });
-  }, []);
-
   const visible = useMemo(
-    () => (query.data ?? []).filter((draft) => !dismissed.includes(draft.id)),
-    [query.data, dismissed],
+    () => (query.data ?? []).filter((draft) => !dismissedIds.includes(draft.id)),
+    [query.data, dismissedIds],
   );
 
   return { drafts: visible, isLoading: query.isLoading, isError: query.isError, dismiss };
 }
 
-/** Accepts a draft into the real claims table (and hides it from the inbox). */
-export function useAcceptIncoming(dismiss: (draftId: string) => void) {
+/** Accepts a draft into the real claims table (and clears it from the wire). */
+export function useAcceptIncoming() {
   const createMutation = useCreateClaim();
+  const dismiss = useInboxStore((s) => s.dismiss);
   return useCallback(
     (draft: IncomingClaim) => {
       createMutation.mutate(
@@ -83,4 +66,28 @@ export function useAcceptIncoming(dismiss: (draftId: string) => void) {
     },
     [createMutation, dismiss],
   );
+}
+
+/**
+ * Auto-file: when enabled (default), every fresh wire report is filed into the
+ * record automatically — counts and ratings grow without manual review.
+ * Mounted once in the tab layout.
+ */
+export function useAutoFileIncoming(): void {
+  const enabled = useSettingsStore((s) => s.autoFileIncoming);
+  const { drafts } = useIncomingClaims();
+  const accept = useAcceptIncoming();
+  const processing = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+    for (const draft of drafts) {
+      if (!processing.current.has(draft.id)) {
+        processing.current.add(draft.id);
+        accept(draft);
+      }
+    }
+  }, [enabled, drafts, accept]);
 }

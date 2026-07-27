@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
 import type { Journalist } from '@/db/schema';
-import { useScoringRows } from '@/features/claims/hooks';
+import { useClaimCounts, useScoringRows } from '@/features/claims/hooks';
 import {
   computeScorecard,
   computeStats,
@@ -22,6 +22,8 @@ import { queryKeys } from '@/lib/query-client';
 
 export interface RankedJournalist extends Journalist {
   stats: JournalistStats;
+  /** Total filed claims, any status. */
+  filedCount: number;
 }
 
 export function useJournalists() {
@@ -39,6 +41,7 @@ export function useJournalist(id: string) {
 export function useRankedJournalists() {
   const journalistsQuery = useJournalists();
   const rowsQuery = useScoringRows();
+  const countsQuery = useClaimCounts();
 
   const ranked = useMemo<RankedJournalist[] | undefined>(() => {
     if (!journalistsQuery.data || !rowsQuery.data) {
@@ -47,12 +50,17 @@ export function useRankedJournalists() {
     const { rows, asOf } = rowsQuery.data;
     const statsById = computeStatsByJournalist(rows, asOf);
     const empty = computeStats([], asOf);
+    const counts = countsQuery.data;
     // Pure score order — one continuous league table (tiers are labels, not
     // sections, so unranked entries interleaving is intended here).
     return journalistsQuery.data
-      .map((j) => ({ ...j, stats: statsById.get(j.id) ?? empty }))
+      .map((j) => ({
+        ...j,
+        stats: statsById.get(j.id) ?? empty,
+        filedCount: counts?.get(j.id) ?? 0,
+      }))
       .sort((a, b) => b.stats.score - a.stats.score);
-  }, [journalistsQuery.data, rowsQuery.data]);
+  }, [journalistsQuery.data, rowsQuery.data, countsQuery.data]);
 
   return {
     data: ranked,

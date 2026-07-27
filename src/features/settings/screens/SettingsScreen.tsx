@@ -13,7 +13,8 @@ import { useTheme } from '@/ui/theme';
 /** Settings tab: appearance and app info. Data controls arrive with export. */
 export function SettingsScreen() {
   const { space } = useTheme();
-  const { themePreference, setThemePreference } = useSettingsStore();
+  const { themePreference, setThemePreference, autoFileIncoming, setAutoFileIncoming } =
+    useSettingsStore();
   const usageQuery = useApiUsage();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
@@ -65,6 +66,24 @@ export function SettingsScreen() {
             value={themePreference}
             onChange={setThemePreference}
           />
+        </View>
+
+        <View style={{ gap: space.sm }}>
+          <Text variant="caption" color="inkTertiary">
+            The wire
+          </Text>
+          <SegmentedControl
+            options={[
+              { value: 'auto', label: 'Auto-file reports' },
+              { value: 'review', label: 'Review first' },
+            ]}
+            value={autoFileIncoming ? 'auto' : 'review'}
+            onChange={(value) => setAutoFileIncoming(value === 'auto')}
+          />
+          <Text variant="secondary" color="inkTertiary">
+            Auto-file adds every incoming wire report to the record as a developing story. Review
+            first holds them in the Incoming tab; unreviewed reports expire after 72 hours.
+          </Text>
         </View>
 
         <View style={{ gap: space.sm }}>

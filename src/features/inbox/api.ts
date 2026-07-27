@@ -27,6 +27,22 @@ export function ingestUrl(): string | undefined {
   return process.env.EXPO_PUBLIC_INGEST_URL || undefined;
 }
 
+/** Older drafts may still carry Bing redirect links — unwrap to the article. */
+export function normalizeSourceUrl(link: string): string {
+  try {
+    const parsed = new URL(link);
+    if (parsed.hostname.endsWith('bing.com')) {
+      const real = parsed.searchParams.get('url');
+      if (real) {
+        return decodeURIComponent(real);
+      }
+    }
+  } catch {
+    // keep original
+  }
+  return link;
+}
+
 export async function fetchIncomingClaims(): Promise<IncomingClaim[]> {
   const base = ingestUrl();
   if (!base) {
@@ -38,5 +54,7 @@ export async function fetchIncomingClaims(): Promise<IncomingClaim[]> {
   if (!response.ok) {
     throw new Error(`Ingest fetch failed: ${response.status}`);
   }
-  return responseSchema.parse(await response.json()).claims;
+  return responseSchema
+    .parse(await response.json())
+    .claims.map((c) => ({ ...c, sourceUrl: normalizeSourceUrl(c.sourceUrl) }));
 }

@@ -62,10 +62,30 @@ function parseRssItems(xml: string): { title: string; link: string; pubDate: num
     const pubDateRaw = block.match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1]?.trim();
     const pubDate = pubDateRaw ? Date.parse(pubDateRaw) : NaN;
     if (title && link && !Number.isNaN(pubDate)) {
-      items.push({ title: decodeXmlEntities(title), link, pubDate });
+      items.push({
+        title: decodeXmlEntities(title),
+        link: unwrapBingLink(decodeXmlEntities(link)),
+        pubDate,
+      });
     }
   }
   return items;
+}
+
+/** Bing wraps article links in a redirect — unwrap to the real URL. */
+function unwrapBingLink(link: string): string {
+  try {
+    const parsed = new URL(link);
+    if (parsed.hostname.endsWith('bing.com')) {
+      const real = parsed.searchParams.get('url');
+      if (real) {
+        return decodeURIComponent(real);
+      }
+    }
+  } catch {
+    // fall through with the original link
+  }
+  return link;
 }
 
 function decodeXmlEntities(text: string): string {

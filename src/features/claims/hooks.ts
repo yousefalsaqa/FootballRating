@@ -6,6 +6,7 @@ import {
   deleteClaim,
   getClaim,
   getClaimTags,
+  listClaimCountsByJournalist,
   listClaims,
   listScoringRows,
   listTags,
@@ -37,6 +38,14 @@ export function useClaimTags(claimId: string) {
 
 export function useTags() {
   return useQuery({ queryKey: queryKeys.tags.all, queryFn: () => listTags() });
+}
+
+/** Filed-claim totals per journalist (any status). */
+export function useClaimCounts() {
+  return useQuery({
+    queryKey: [...queryKeys.claims.all, 'counts'],
+    queryFn: () => listClaimCountsByJournalist(),
+  });
 }
 
 /** Scoring input plus the moment it was captured — recency decay is computed against `asOf`. */
