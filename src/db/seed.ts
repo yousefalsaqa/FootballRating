@@ -1,17 +1,17 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, like } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { appMeta, claims, journalists, type ClaimOutcome, type Confidence } from '@/db/schema';
 import { avatarColorFor } from '@/lib/constants';
 import { newId } from '@/lib/id';
 
-const SEED_FLAG = 'seeded.journalists.v1';
 const HANDLE_BACKFILL_FLAG = 'seeded.handles.v2';
-const DEMO_CLAIMS_FLAG = 'seeded.demo-claims.v1';
+const DEMO_CLAIMS_V2_FLAG = 'seeded.demo-claims.v2';
 
 /**
  * Seed ids are FIXED strings (not per-install UUIDs) so exports from one
  * device merge cleanly into another instead of duplicating the seeded rows.
+ * Seeding is idempotent by id: new entries added here reach existing installs.
  */
 const SEED_JOURNALISTS: { id: string; name: string; outlet: string; handle: string }[] = [
   { id: 'seed-fabrizio-romano', name: 'Fabrizio Romano', outlet: 'Independent', handle: 'fabrizioromano' },
@@ -21,6 +21,14 @@ const SEED_JOURNALISTS: { id: string; name: string; outlet: string; handle: stri
   { id: 'seed-christian-falk', name: 'Christian Falk', outlet: 'BILD', handle: 'cfbayern' },
   { id: 'seed-matteo-moretto', name: 'Matteo Moretto', outlet: 'Relevo', handle: 'mattemoretto' },
   { id: 'seed-ben-jacobs', name: 'Ben Jacobs', outlet: 'talkSPORT', handle: 'jacobsben' },
+  { id: 'seed-alfredo-pedulla', name: 'Alfredo Pedullà', outlet: 'Sportitalia', handle: 'alfredopedulla' },
+  { id: 'seed-nicolo-schira', name: 'Nicolò Schira', outlet: 'Independent', handle: 'nicoschira' },
+  { id: 'seed-dharmesh-sheth', name: 'Dharmesh Sheth', outlet: 'Sky Sports', handle: 'skysports_sheth' },
+  { id: 'seed-santi-aouna', name: 'Santi Aouna', outlet: 'Foot Mercato', handle: 'santi_j_fm' },
+  { id: 'seed-sacha-tavolieri', name: 'Sacha Tavolieri', outlet: 'Sky Sport CH', handle: 'sachatavolieri' },
+  { id: 'seed-mike-mcgrath', name: 'Mike McGrath', outlet: 'The Telegraph', handle: 'mcgrathmike' },
+  { id: 'seed-simon-stone', name: 'Simon Stone', outlet: 'BBC Sport', handle: 'sistoney67' },
+  { id: 'seed-cesar-luis-merlo', name: 'César Luis Merlo', outlet: 'TyC Sports', handle: 'clmerlo' },
 ];
 
 interface SeedClaim {
@@ -31,53 +39,174 @@ interface SeedClaim {
   toClubName: string;
   league?: string;
   confidence: Confidence;
+  sourceUrl?: string;
   /** Days ago the claim was made; 0 = today. */
   claimedDaysAgo: number;
   /** Present = resolved that many days ago. */
   resolved?: { outcome: ClaimOutcome; daysAgo: number };
 }
 
-/** Summer 2026 window demo wire — gives the table standings from day one. */
-const SEED_CLAIMS: SeedClaim[] = [
-  // Fabrizio Romano
-  { journalistId: 'seed-fabrizio-romano', headline: 'Haaland agreement with Real Madrid at advanced stage', playerName: 'Erling Haaland', fromClubName: 'Manchester City', toClubName: 'Real Madrid', league: 'La Liga', confidence: 2, claimedDaysAgo: 0 },
-  { journalistId: 'seed-fabrizio-romano', headline: 'Nico Williams to Bayern, here we go', playerName: 'Nico Williams', fromClubName: 'Athletic Club', toClubName: 'Bayern München', league: 'Bundesliga', confidence: 3, claimedDaysAgo: 44, resolved: { outcome: 'true', daysAgo: 21 } },
-  { journalistId: 'seed-fabrizio-romano', headline: 'Osimhen to Juventus, done deal — here we go', playerName: 'Victor Osimhen', fromClubName: 'Galatasaray', toClubName: 'Juventus', league: 'Serie A', confidence: 3, claimedDaysAgo: 33, resolved: { outcome: 'true', daysAgo: 26 } },
-  { journalistId: 'seed-fabrizio-romano', headline: 'Kudus set for Newcastle medical', playerName: 'Mohammed Kudus', fromClubName: 'West Ham', toClubName: 'Newcastle', league: 'Premier League', confidence: 2, claimedDaysAgo: 55, resolved: { outcome: 'partial', daysAgo: 40 } },
-  // David Ornstein
-  { journalistId: 'seed-david-ornstein', headline: 'Arsenal agree £70m package for Rodrygo', playerName: 'Rodrygo', fromClubName: 'Real Madrid', toClubName: 'Arsenal', league: 'Premier League', confidence: 2, claimedDaysAgo: 0 },
-  { journalistId: 'seed-david-ornstein', headline: 'Saka signs new long-term Arsenal contract', playerName: 'Bukayo Saka', toClubName: 'Arsenal', league: 'Premier League', confidence: 3, claimedDaysAgo: 30, resolved: { outcome: 'true', daysAgo: 14 } },
-  { journalistId: 'seed-david-ornstein', headline: 'Liverpool exploring Zubimendi release clause', playerName: 'Martín Zubimendi', fromClubName: 'Real Sociedad', toClubName: 'Liverpool', league: 'Premier League', confidence: 1, claimedDaysAgo: 70, resolved: { outcome: 'true', daysAgo: 35 } },
-  // Florian Plettenberg
-  { journalistId: 'seed-florian-plettenberg', headline: 'Woltemade to Chelsea at advanced stage', playerName: 'Nick Woltemade', fromClubName: 'Stuttgart', toClubName: 'Chelsea', league: 'Premier League', confidence: 2, claimedDaysAgo: 38, resolved: { outcome: 'partial', daysAgo: 18 } },
-  { journalistId: 'seed-florian-plettenberg', headline: 'Bayern medical booked for Wirtz', playerName: 'Florian Wirtz', fromClubName: 'Liverpool', toClubName: 'Bayern München', league: 'Bundesliga', confidence: 3, claimedDaysAgo: 50, resolved: { outcome: 'false', daysAgo: 24 } },
-  { journalistId: 'seed-florian-plettenberg', headline: 'Leverkusen close to Sesko deal', playerName: 'Benjamin Šeško', fromClubName: 'RB Leipzig', toClubName: 'Bayer Leverkusen', league: 'Bundesliga', confidence: 2, claimedDaysAgo: 62, resolved: { outcome: 'true', daysAgo: 45 } },
-  // Gianluca Di Marzio
-  { journalistId: 'seed-gianluca-di-marzio', headline: 'Leão–PSG talks opened via intermediaries', playerName: 'Rafael Leão', fromClubName: 'AC Milan', toClubName: 'Paris Saint-Germain', league: 'Ligue 1', confidence: 1, claimedDaysAgo: 41, resolved: { outcome: 'false', daysAgo: 12 } },
-  { journalistId: 'seed-gianluca-di-marzio', headline: 'Inter agree terms with Gudmundsson', playerName: 'Albert Guðmundsson', fromClubName: 'Fiorentina', toClubName: 'Inter', league: 'Serie A', confidence: 2, claimedDaysAgo: 58, resolved: { outcome: 'true', daysAgo: 39 } },
-  // Christian Falk
-  { journalistId: 'seed-christian-falk', headline: 'Kimmich agrees Bayern extension to 2029', playerName: 'Joshua Kimmich', toClubName: 'Bayern München', league: 'Bundesliga', confidence: 3, claimedDaysAgo: 27, resolved: { outcome: 'true', daysAgo: 10 } },
-  { journalistId: 'seed-christian-falk', headline: 'City agree Musiala release-clause package', playerName: 'Jamal Musiala', fromClubName: 'Bayern München', toClubName: 'Manchester City', league: 'Premier League', confidence: 1, claimedDaysAgo: 48, resolved: { outcome: 'false', daysAgo: 29 } },
-  // Matteo Moretto
-  { journalistId: 'seed-matteo-moretto', headline: 'Chelsea preparing €60m bid for Fermín', playerName: 'Fermín López', fromClubName: 'Barcelona', toClubName: 'Chelsea', league: 'Premier League', confidence: 2, claimedDaysAgo: 0 },
-  { journalistId: 'seed-matteo-moretto', headline: 'Vinícius renewal stalled amid Saudi push', playerName: 'Vinícius Júnior', toClubName: 'Real Madrid', league: 'La Liga', confidence: 1, claimedDaysAgo: 36, resolved: { outcome: 'partial', daysAgo: 16 } },
-  { journalistId: 'seed-matteo-moretto', headline: 'Atlético close on Sørloth replacement Gyökeres', playerName: 'Viktor Gyökeres', fromClubName: 'Sporting CP', toClubName: 'Atlético Madrid', league: 'La Liga', confidence: 2, claimedDaysAgo: 66, resolved: { outcome: 'true', daysAgo: 47 } },
-  // Ben Jacobs
-  { journalistId: 'seed-ben-jacobs', headline: 'Garnacho-to-Chelsea talks revived', playerName: 'Alejandro Garnacho', fromClubName: 'Manchester United', toClubName: 'Chelsea', league: 'Premier League', confidence: 2, claimedDaysAgo: 0 },
-  { journalistId: 'seed-ben-jacobs', headline: 'Toney agrees Premier League return', playerName: 'Ivan Toney', fromClubName: 'Al-Ahli', toClubName: 'Everton', league: 'Premier League', confidence: 1, claimedDaysAgo: 52, resolved: { outcome: 'true', daysAgo: 31 } },
+/**
+ * Real, publicly-reported claims from the 2026 summer window (as of 27 Jul
+ * 2026), with sources attached. Nothing invented — pending items resolve as
+ * the window plays out.
+ */
+const SEED_CLAIMS_V2: SeedClaim[] = [
+  {
+    journalistId: 'seed-fabrizio-romano',
+    headline: 'Yan Diomande to Real Madrid, here we go — fee in excess of €100m',
+    playerName: 'Yan Diomande',
+    fromClubName: 'RB Leipzig',
+    toClubName: 'Real Madrid',
+    league: 'La Liga',
+    confidence: 3,
+    sourceUrl: 'https://x.com/FabrizioRomano/status/2081453698962592146',
+    claimedDaysAgo: 1,
+  },
+  {
+    journalistId: 'seed-florian-plettenberg',
+    headline: 'Diomande–Madrid not finalized: negotiations still ongoing',
+    playerName: 'Yan Diomande',
+    fromClubName: 'RB Leipzig',
+    toClubName: 'Real Madrid',
+    league: 'La Liga',
+    confidence: 2,
+    sourceUrl: 'https://www.bavarianfootballworks.com/off-the-crossbar/236021/media-wars-florian-plettenberg-and-fabrizio-romano-go-toe-to-toe-over-accusations-of-fake-news',
+    claimedDaysAgo: 1,
+  },
+  {
+    journalistId: 'seed-david-ornstein',
+    headline: 'Summerville to Al-Hilal in €70m+ deal, medical completed',
+    playerName: 'Crysencio Summerville',
+    fromClubName: 'Liverpool',
+    toClubName: 'Al-Hilal',
+    league: 'Saudi Pro League',
+    confidence: 3,
+    sourceUrl: 'https://www.empireofthekop.com/2026/07/23/liverpool-target-agrees-four-year-deal-as-ornstein-confirms-medical-done-on-tuesday/',
+    claimedDaysAgo: 6,
+    resolved: { outcome: 'true', daysAgo: 4 },
+  },
+  {
+    journalistId: 'seed-david-ornstein',
+    headline: 'Newcastle’s £46m Bergvall offer rejected by Tottenham',
+    playerName: 'Lucas Bergvall',
+    fromClubName: 'Tottenham',
+    toClubName: 'Newcastle',
+    league: 'Premier League',
+    confidence: 2,
+    sourceUrl: 'https://sports.yahoo.com/articles/david-ornstein-just-confirmed-tottenham-060001397.html',
+    claimedDaysAgo: 3,
+  },
+  {
+    journalistId: 'seed-david-ornstein',
+    headline: 'Real Madrid operating on basis Rodri arrives this summer',
+    playerName: 'Rodri',
+    fromClubName: 'Manchester City',
+    toClubName: 'Real Madrid',
+    league: 'La Liga',
+    confidence: 2,
+    sourceUrl: 'https://www.footballtransfers.com/en/transfer-news/uk-premier-league/2026/07/real-madrid-rodri-david-ornstein',
+    claimedDaysAgo: 7,
+  },
+  {
+    journalistId: 'seed-david-ornstein',
+    headline: 'Arsenal exploring sensational Vinícius Jr move — no talks yet',
+    playerName: 'Vinícius Júnior',
+    fromClubName: 'Real Madrid',
+    toClubName: 'Arsenal',
+    league: 'Premier League',
+    confidence: 1,
+    sourceUrl: 'https://www.footballtransfers.com/en/transfer-news/uk-premier-league/2026/07/arsenal-transfer-news-vinicius-jr-david-ornstein',
+    claimedDaysAgo: 5,
+  },
+  {
+    journalistId: 'seed-florian-plettenberg',
+    headline: 'Bayern and Nathaniel Brown reach full verbal agreement',
+    playerName: 'Nathaniel Brown',
+    fromClubName: 'Eintracht Frankfurt',
+    toClubName: 'Bayern München',
+    league: 'Bundesliga',
+    confidence: 3,
+    sourceUrl: 'https://www.bavarianfootballworks.com/bayern-munich-transfer-news-rumors/233743/bayern-munich-keeping-eyes-ears-open-in-transfer-market-but-are-pleased-with-current-squad',
+    claimedDaysAgo: 14,
+    resolved: { outcome: 'true', daysAgo: 7 },
+  },
+  {
+    journalistId: 'seed-florian-plettenberg',
+    headline: 'Musiala–Galatasaray links are nonsense: 100% staying at Bayern',
+    playerName: 'Jamal Musiala',
+    toClubName: 'Bayern München',
+    league: 'Bundesliga',
+    confidence: 3,
+    sourceUrl: 'https://www.sportsmole.co.uk/people/florian-plettenberg/',
+    claimedDaysAgo: 6,
+  },
+  {
+    journalistId: 'seed-gianluca-di-marzio',
+    headline: 'Como third bid for Chalobah accepted — ready to close',
+    playerName: 'Trevoh Chalobah',
+    fromClubName: 'Chelsea',
+    toClubName: 'Como',
+    league: 'Serie A',
+    confidence: 2,
+    sourceUrl: 'https://www.talkchelsea.net/transfers/jacobs-contradicts-di-marzio-defenders-future/',
+    claimedDaysAgo: 2,
+  },
+  {
+    journalistId: 'seed-ben-jacobs',
+    headline: 'Chalobah bids rejected — no agreement with Como',
+    playerName: 'Trevoh Chalobah',
+    fromClubName: 'Chelsea',
+    toClubName: 'Como',
+    league: 'Serie A',
+    confidence: 2,
+    sourceUrl: 'https://www.talkchelsea.net/transfers/jacobs-contradicts-di-marzio-defenders-future/',
+    claimedDaysAgo: 2,
+  },
+];
+
+/** Headlines of the retired v1 fake demo set — deleted from seeded installs. */
+const V1_FAKE_HEADLINES = [
+  'Haaland agreement with Real Madrid at advanced stage',
+  'Nico Williams to Bayern, here we go',
+  'Osimhen to Juventus, done deal — here we go',
+  'Kudus set for Newcastle medical',
+  'Arsenal agree £70m package for Rodrygo',
+  'Saka signs new long-term Arsenal contract',
+  'Liverpool exploring Zubimendi release clause',
+  'Woltemade to Chelsea at advanced stage',
+  'Bayern medical booked for Wirtz',
+  'Leverkusen close to Sesko deal',
+  'Leão–PSG talks opened via intermediaries',
+  'Inter agree terms with Gudmundsson',
+  'Kimmich agrees Bayern extension to 2029',
+  'City agree Musiala release-clause package',
+  'Chelsea preparing €60m bid for Fermín',
+  'Vinícius renewal stalled amid Saudi push',
+  'Atlético close on Sørloth replacement Gyökeres',
+  'Garnacho-to-Chelsea talks revived',
+  'Toney agrees Premier League return',
 ];
 
 const DAY_MS = 86_400_000;
 
-/** Populates the wire with demo claims once, and only into an empty table. */
-async function seedDemoClaimsIfNeeded(now: number): Promise<void> {
-  if (await hasFlag(DEMO_CLAIMS_FLAG)) {
+/** Replaces the retired fake wire with real, sourced claims. Runs once. */
+async function seedRealClaimsIfNeeded(now: number): Promise<void> {
+  if (await hasFlag(DEMO_CLAIMS_V2_FLAG)) {
     return;
   }
-  const existing = await db.select({ id: claims.id }).from(claims).limit(1);
-  if (existing.length === 0) {
+  // Purge the v1 invented claims (only from seeded journalists, by exact headline).
+  await db
+    .delete(claims)
+    .where(and(like(claims.journalistId, 'seed-%'), inArray(claims.headline, V1_FAKE_HEADLINES)));
+
+  const existingHeadlines = new Set(
+    (await db.select({ headline: claims.headline }).from(claims)).map((r) => r.headline),
+  );
+  const fresh = SEED_CLAIMS_V2.filter((c) => !existingHeadlines.has(c.headline));
+  if (fresh.length) {
     await db.insert(claims).values(
-      SEED_CLAIMS.map((c) => ({
+      fresh.map((c) => ({
         id: newId(),
         journalistId: c.journalistId,
         headline: c.headline,
@@ -87,6 +216,7 @@ async function seedDemoClaimsIfNeeded(now: number): Promise<void> {
         league: c.league ?? null,
         confidence: c.confidence,
         transferWindow: '2026-summer',
+        sourceUrl: c.sourceUrl ?? null,
         claimedAt: now - c.claimedDaysAgo * DAY_MS,
         status: c.resolved ? ('resolved' as const) : ('pending' as const),
         outcome: c.resolved?.outcome ?? null,
@@ -95,7 +225,7 @@ async function seedDemoClaimsIfNeeded(now: number): Promise<void> {
       })),
     );
   }
-  await db.insert(appMeta).values({ key: DEMO_CLAIMS_FLAG, value: new Date(now).toISOString() });
+  await db.insert(appMeta).values({ key: DEMO_CLAIMS_V2_FLAG, value: new Date(now).toISOString() });
 }
 
 /**
@@ -108,22 +238,25 @@ async function hasFlag(key: string): Promise<boolean> {
   return rows.length > 0;
 }
 
-/** Inserts well-known journalists on first launch. Idempotent via app_meta flags. */
+/** Seeds journalists (insert-missing by fixed id) and the real-claims wire. */
 export async function seedIfNeeded(): Promise<void> {
   const now = Date.now();
-  if (!(await hasFlag(SEED_FLAG))) {
+  const existingIds = new Set(
+    (await db.select({ id: journalists.id }).from(journalists)).map((r) => r.id),
+  );
+  const missing = SEED_JOURNALISTS.filter((j) => !existingIds.has(j.id));
+  if (missing.length) {
     await db.insert(journalists).values(
-      SEED_JOURNALISTS.map((j) => ({
+      missing.map((j) => ({
         ...j,
         avatarColor: avatarColorFor(j.name),
         isSeeded: true,
         createdAt: now,
       })),
     );
-    await db.insert(appMeta).values({ key: SEED_FLAG, value: new Date(now).toISOString() });
   }
   await backfillHandlesIfNeeded(now);
-  await seedDemoClaimsIfNeeded(now);
+  await seedRealClaimsIfNeeded(now);
 }
 
 /** Databases seeded before the handle column existed get handles by name. */

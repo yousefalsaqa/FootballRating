@@ -1,3 +1,4 @@
+import * as Linking from 'expo-linking';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { Alert, View } from 'react-native';
@@ -117,6 +118,14 @@ export function ClaimDetailScreen() {
           {tagList ? <KeyValueRow label="Tags" value={tagList} /> : null}
           {claim.notes ? <KeyValueRow label="Notes" value={claim.notes} /> : null}
         </Card>
+
+        {claim.sourceUrl ? (
+          <Button
+            label="View source"
+            variant="secondary"
+            onPress={() => void Linking.openURL(claim.sourceUrl as string)}
+          />
+        ) : null}
 
         {claim.status === 'pending' ? (
           <View style={{ gap: space.md }}>
