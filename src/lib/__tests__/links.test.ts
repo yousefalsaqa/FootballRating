@@ -9,6 +9,10 @@ describe('extractHandleFromUrl', () => {
     ['http://www.x.com/Plettigoal', 'plettigoal'],
     ['x.com/JacobsBen/status/9', 'jacobsben'],
     ['https://mobile.twitter.com/cfbayern', 'cfbayern'],
+    ['https://www.instagram.com/fabrizioromano/reel/Cxyz/', 'fabrizioromano'],
+    ['instagram.com/FabrizioRomano', 'fabrizioromano'],
+    ['https://www.snapchat.com/add/fabrizioromano', 'fabrizioromano'],
+    ['https://snapchat.com/@fabrizioromano', 'fabrizioromano'],
   ])('%s → %s', (url, handle) => {
     expect(extractHandleFromUrl(url)).toBe(handle);
   });
@@ -19,6 +23,8 @@ describe('extractHandleFromUrl', () => {
     'https://x.com/search?q=romano',
     'https://x.com/i/status/123',
     'https://x.com/home',
+    'https://www.instagram.com/reel/Cxyz/',
+    'https://snapchat.com/discover',
     '',
   ])('rejects %s', (input) => {
     expect(extractHandleFromUrl(input)).toBeNull();

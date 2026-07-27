@@ -14,17 +14,24 @@ import {
   useSetJournalistArchived,
 } from '@/features/journalists/hooks';
 import { formatAccuracy, formatScore } from '@/lib/format';
-import { Button, Card, Divider, EmptyState, Screen, Skeleton, Text } from '@/ui/components';
+import { Button, Divider, EmptyState, Screen, Skeleton, Text } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
 
-function StatCell({ label, value }: { label: string; value: string }) {
+function RecordLine({ label, value }: { label: string; value: string }) {
+  const { space } = useTheme();
   return (
-    <View style={{ flex: 1, alignItems: 'center', gap: 2 }}>
-      <Text variant="headline" style={{ fontVariant: ['tabular-nums'] }}>
-        {value}
-      </Text>
-      <Text variant="caption" color="inkTertiary">
+    <View
+      style={{
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingVertical: space.sm,
+      }}
+    >
+      <Text variant="caption" color="inkSecondary">
         {label}
+      </Text>
+      <Text variant="headline" style={{ fontVariant: ['tabular-nums'], fontSize: 17, lineHeight: 20 }}>
+        {value}
       </Text>
     </View>
   );
@@ -83,44 +90,63 @@ export function JournalistDetailScreen() {
 
   return (
     <Screen>
-      <View style={{ alignItems: 'center', gap: space.md, paddingVertical: space.xl }}>
-        <JournalistAvatar name={journalist.name} color={journalist.avatarColor} size={72} />
-        <View style={{ alignItems: 'center', gap: 2 }}>
-          <Text variant="title">{journalist.name}</Text>
-          {journalist.outlet ? (
-            <Text variant="secondary" color="inkSecondary">
-              {journalist.outlet}
+      <View style={{ paddingVertical: space.lg, gap: space.xs }}>
+        <Text variant="kicker" color="danger">
+          Reporter dossier
+        </Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <View style={{ flex: 1, paddingRight: space.md }}>
+            <Text variant="display" style={{ fontSize: 34, lineHeight: 35 }}>
+              {journalist.name}
             </Text>
-          ) : null}
-          {journalist.handle ? (
-            <Text variant="secondary" color="inkTertiary">
-              @{journalist.handle}
+            <Text variant="secondary" color="inkSecondary" style={{ marginTop: space.xs }}>
+              {journalist.outlet ?? 'Independent'}
+              {journalist.handle ? ` · @${journalist.handle}` : ''}
             </Text>
-          ) : null}
+          </View>
+          <JournalistAvatar name={journalist.name} size={64} />
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.lg }}>
-          <Text variant="score">{formatScore(stats.score)}</Text>
-          <TierBadge tier={stats.tier} size="lg" />
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: space.lg, marginTop: space.md }}>
+          <View>
+            <Text variant="caption" color="inkTertiary">
+              Reliability
+            </Text>
+            <Text variant="score" style={{ fontSize: 54, lineHeight: 56 }}>
+              {formatScore(stats.score)}
+            </Text>
+          </View>
+          <View style={{ paddingBottom: 6, gap: 4 }}>
+            <TierBadge tier={stats.tier} size="lg" />
+            {stats.tier === null ? (
+              <Text variant="caption" color="inkTertiary">
+                {3 - stats.resolvedCount} more to rank
+              </Text>
+            ) : null}
+          </View>
         </View>
-        {stats.resolvedCount > 0 ? (
-          <Text variant="secondary" color="inkSecondary" style={{ fontVariant: ['tabular-nums'] }}>
-            Record {stats.record.trueCount}–{stats.record.partialCount}–{stats.record.falseCount}
-          </Text>
-        ) : null}
-        {stats.tier === null ? (
-          <Text variant="secondary" color="inkTertiary">
-            Resolve {3 - stats.resolvedCount} more claim{3 - stats.resolvedCount === 1 ? '' : 's'} to rank
-          </Text>
-        ) : null}
       </View>
 
-      <Card>
-        <View style={{ flexDirection: 'row' }}>
-          <StatCell label="Claims" value={String(stats.resolvedCount)} />
-          <StatCell label="Accuracy" value={formatAccuracy(stats.accuracy)} />
-          <StatCell label="Streak" value={String(stats.streak)} />
+      <View>
+        <Divider weight="strong" />
+        <View style={{ paddingVertical: space.sm }}>
+          <Text variant="title" style={{ fontSize: 18, lineHeight: 21 }}>
+            Reporting record
+          </Text>
         </View>
-      </Card>
+        <Divider />
+        <RecordLine label="True" value={String(stats.record.trueCount)} />
+        <Divider />
+        <RecordLine label="Partial" value={String(stats.record.partialCount)} />
+        <Divider />
+        <RecordLine label="False" value={String(stats.record.falseCount)} />
+        <Divider />
+        <RecordLine label="Developing" value={String(claims.filter((c) => c.status === 'pending').length)} />
+        <Divider />
+        <RecordLine label="Accuracy" value={formatAccuracy(stats.accuracy)} />
+        <Divider />
+        <RecordLine label="Streak" value={String(stats.streak)} />
+        <Divider weight="medium" />
+      </View>
 
       {scorecard ? (
         <View style={{ marginTop: space.xl }}>

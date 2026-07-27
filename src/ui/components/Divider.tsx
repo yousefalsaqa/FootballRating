@@ -2,14 +2,22 @@ import { View } from 'react-native';
 
 import { useTheme } from '@/ui/theme';
 
-/** Hairline separator. `inset` aligns with ListRow content past the leading slot. */
-export function Divider({ inset = false }: { inset?: boolean }) {
-  const { colors, gutter } = useTheme();
+interface DividerProps {
+  /** Newspaper rule weight: thin row rule, medium section rule, strong editorial rule. */
+  weight?: 'thin' | 'medium' | 'strong';
+  /** Indents past a leading column (e.g. rank numbers). */
+  inset?: boolean;
+}
+
+/** Editorial rule. */
+export function Divider({ weight = 'thin', inset = false }: DividerProps) {
+  const { colors, rules, gutter } = useTheme();
+  const color = weight === 'thin' ? colors.hairline : weight === 'medium' ? colors.ruleMedium : colors.ruleStrong;
   return (
     <View
       style={{
-        height: 1,
-        backgroundColor: colors.hairline,
+        height: rules[weight],
+        backgroundColor: color,
         marginLeft: inset ? gutter + 48 : 0,
       }}
     />

@@ -6,8 +6,8 @@ import {
   modalShadow,
   palettes,
   radii,
+  rules,
   space,
-  tierColors,
   type,
   type ColorScheme,
   type Colors,
@@ -16,9 +16,9 @@ import {
 export interface Theme {
   scheme: ColorScheme;
   colors: Colors;
-  tiers: (typeof tierColors)[ColorScheme];
   space: typeof space;
   radii: typeof radii;
+  rules: typeof rules;
   type: typeof type;
   gutter: number;
   modalShadow: typeof modalShadow;
@@ -28,9 +28,9 @@ function buildTheme(scheme: ColorScheme): Theme {
   return {
     scheme,
     colors: palettes[scheme],
-    tiers: tierColors[scheme],
     space,
     radii,
+    rules,
     type,
     gutter,
     modalShadow,

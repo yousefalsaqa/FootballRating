@@ -2,9 +2,9 @@ import { TextInput, type TextInputProps } from 'react-native';
 
 import { useTheme } from '@/ui/theme';
 
-/** Themed text input used for search fields and forms. */
+/** Flat editorial input — square, strong underline, no floating chrome. */
 export function SearchInput(props: TextInputProps) {
-  const { colors, radii, space, type } = useTheme();
+  const { colors, radii, rules, space, type } = useTheme();
   return (
     <TextInput
       placeholderTextColor={colors.inkTertiary}
@@ -13,15 +13,17 @@ export function SearchInput(props: TextInputProps) {
       {...props}
       style={[
         {
-          minHeight: 48,
-          borderRadius: radii.md,
-          borderWidth: 1,
-          borderColor: colors.hairline,
+          minHeight: 44,
+          borderRadius: radii.sm,
+          borderWidth: rules.thin,
+          borderColor: colors.ruleMedium,
+          borderBottomWidth: rules.medium,
+          borderBottomColor: colors.ink,
           backgroundColor: colors.surface,
           color: colors.ink,
-          paddingHorizontal: space.lg,
+          paddingHorizontal: space.md,
           fontFamily: type.body.fontFamily,
-          fontSize: type.body.fontSize,
+          fontSize: 15,
         },
         props.style,
       ]}

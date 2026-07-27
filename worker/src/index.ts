@@ -12,7 +12,10 @@ import journalists from '../../src/db/seed-journalists.json';
 
 interface Env {
   INGEST_KV: KVNamespace;
-  ANTHROPIC_API_KEY: string;
+  /** Free-tier Workers AI binding — the default extractor. */
+  AI: { run(model: string, options: Record<string, unknown>): Promise<{ response?: string }> };
+  /** Optional: switches extraction to Claude Haiku when set. */
+  ANTHROPIC_API_KEY?: string;
 }
 
 interface FeedItem {
@@ -86,13 +89,23 @@ function slugify(text: string): string {
     .replace(/(^-|-$)/g, '');
 }
 
+/** Bing News RSS — Google News 503s requests from Cloudflare's network. */
+function feedUrlFor(name: string): string {
+  return `https://www.bing.com/news/search?q=${encodeURIComponent(`"${name}" transfer`)}&format=rss`;
+}
+
+const FEED_HEADERS = {
+  'user-agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+  accept: 'application/rss+xml, application/xml, text/xml',
+};
+
 /** Collects fresh, unseen feed items across all tracked journalists. */
 async function collectFreshItems(env: Env, now: number): Promise<FeedItem[]> {
   const fresh: FeedItem[] = [];
   for (const journalist of journalists) {
-    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(`"${journalist.name}" transfer`)}&hl=en-GB&gl=GB&ceid=GB:en`;
     try {
-      const response = await fetch(url, { headers: { 'user-agent': 'journalist-rater-ingest/1.0' } });
+      const response = await fetch(feedUrlFor(journalist.name), { headers: FEED_HEADERS });
       if (!response.ok) {
         continue;
       }
@@ -137,7 +150,40 @@ Reply with ONLY a JSON array (no prose). For each item that IS a claim, include:
 }
 Omit items that are not claims. If unsure, omit.`;
 
-/** Asks Claude to turn raw headlines into structured claim drafts. */
+/** Runs the extraction prompt on Claude (if a key is set) or free Workers AI. */
+async function runModel(env: Env, userContent: string): Promise<string> {
+  if (env.ANTHROPIC_API_KEY) {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 2000,
+        system: EXTRACTION_PROMPT,
+        messages: [{ role: 'user', content: userContent }],
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`Claude API error ${response.status}: ${await response.text()}`);
+    }
+    const body = (await response.json()) as { content: { type: string; text?: string }[] };
+    return body.content.find((c) => c.type === 'text')?.text ?? '[]';
+  }
+  const result = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+    messages: [
+      { role: 'system', content: EXTRACTION_PROMPT },
+      { role: 'user', content: userContent },
+    ],
+    max_tokens: 2000,
+  });
+  return result.response ?? '[]';
+}
+
+/** Asks the model to turn raw headlines into structured claim drafts. */
 async function extractClaims(env: Env, items: FeedItem[]): Promise<ClaimDraft[]> {
   if (!items.length) {
     return [];
@@ -147,26 +193,16 @@ async function extractClaims(env: Env, items: FeedItem[]): Promise<ClaimDraft[]>
     journalist: item.journalistName,
     title: item.title,
   }));
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 2000,
-      system: EXTRACTION_PROMPT,
-      messages: [{ role: 'user', content: JSON.stringify(payload) }],
-    }),
-  });
-  if (!response.ok) {
-    console.error('Claude API error', response.status, await response.text());
+  let text: string;
+  try {
+    text = await runModel(env, JSON.stringify(payload));
+  } catch (error) {
+    console.error('Extraction model failed', error);
     return [];
   }
-  const body = (await response.json()) as { content: { type: string; text?: string }[] };
-  const text = body.content.find((c) => c.type === 'text')?.text ?? '[]';
+  // Models sometimes wrap JSON in prose/fences — grab the array.
+  const arrayMatch = text.match(/\[[\s\S]*\]/);
+  text = arrayMatch ? arrayMatch[0] : text;
   let parsed: unknown;
   try {
     parsed = JSON.parse(text.replace(/^```json?\s*|\s*```$/g, ''));
@@ -236,7 +272,7 @@ export default {
     ctx.waitUntil(runIngest(env));
   },
 
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: CORS_HEADERS });
@@ -246,10 +282,39 @@ export default {
         headers: CORS_HEADERS,
       });
     }
-    // Manual trigger for testing: /run (also lets us verify before the cron fires).
+    // Manual trigger: fire-and-forget (a full cycle outlives request timeouts).
     if (url.pathname === '/run') {
-      await runIngest(env);
-      return new Response(JSON.stringify({ ok: true }), { headers: CORS_HEADERS });
+      ctx.waitUntil(runIngest(env));
+      return new Response(JSON.stringify({ started: true }), { headers: CORS_HEADERS });
+    }
+    // Diagnostics: fetch one feed and run a trivial AI prompt, report results.
+    if (url.pathname === '/debug') {
+      const debug: Record<string, unknown> = {};
+      try {
+        const first = journalists[0];
+        const response = await fetch(feedUrlFor(first?.name ?? 'football'), { headers: FEED_HEADERS });
+        debug.feedStatus = response.status;
+        const xml = await response.text();
+        const items = parseRssItems(xml);
+        debug.itemsParsed = items.length;
+        debug.firstTitles = items.slice(0, 3).map((i) => i.title);
+      } catch (error) {
+        debug.feedError = String(error);
+      }
+      try {
+        const ai = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+          messages: [{ role: 'user', content: 'Reply with exactly: OK' }],
+          max_tokens: 10,
+        });
+        debug.aiResponse = ai.response;
+      } catch (error) {
+        debug.aiError = String(error);
+      }
+      const drafts = await env.INGEST_KV.list({ prefix: 'draft:' });
+      const seen = await env.INGEST_KV.list({ prefix: 'seen:' });
+      debug.draftCount = drafts.keys.length;
+      debug.seenCount = seen.keys.length;
+      return new Response(JSON.stringify(debug, null, 2), { headers: CORS_HEADERS });
     }
     return new Response('journalist-rater-ingest', { headers: { 'content-type': 'text/plain' } });
   },

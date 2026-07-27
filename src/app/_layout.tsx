@@ -6,6 +6,8 @@ import {
   Inter_700Bold,
   useFonts,
 } from '@expo-google-fonts/inter';
+import { PlayfairDisplay_900Black } from '@expo-google-fonts/playfair-display';
+import { SourceSerif4_400Regular, SourceSerif4_600SemiBold } from '@expo-google-fonts/source-serif-4';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -79,19 +81,20 @@ function ThemedApp({ onDbSettled }: { onDbSettled: () => void }) {
           screenOptions={{
             headerStyle: { backgroundColor: theme.colors.bg },
             headerTintColor: theme.colors.ink,
-            headerTitleStyle: { fontFamily: theme.type.headline.fontFamily },
+            headerTitleStyle: { fontFamily: theme.type.title.fontFamily, fontSize: 19 },
             headerShadowVisible: false,
             contentStyle: { backgroundColor: theme.colors.bg },
           }}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="journalist/[id]" options={{ title: 'Journalist' }} />
+          <Stack.Screen name="journalist/[id]" options={{ title: 'Dossier' }} />
           <Stack.Screen
             name="journalist/new"
-            options={{ title: 'New journalist', presentation: 'modal' }}
+            options={{ title: 'Add reporter', presentation: 'modal' }}
           />
-          <Stack.Screen name="claim/[id]" options={{ title: 'Claim' }} />
-          <Stack.Screen name="claim/new" options={{ title: 'New claim', presentation: 'modal' }} />
+          <Stack.Screen name="claim/[id]" options={{ title: 'Report' }} />
+          <Stack.Screen name="claim/new" options={{ title: 'File a claim', presentation: 'modal' }} />
+          <Stack.Screen name="methodology" options={{ title: 'Methodology' }} />
           <Stack.Screen name="gallery" options={{ title: 'Gallery' }} />
         </Stack>
       </DatabaseGate>
@@ -108,6 +111,9 @@ export default function RootLayout() {
     Inter_600SemiBold,
     Inter_700Bold,
     BarlowCondensed_700Bold,
+    PlayfairDisplay_900Black,
+    SourceSerif4_400Regular,
+    SourceSerif4_600SemiBold,
   });
   // A font failure must not deadlock the splash — render with fallback fonts.
   const fontsSettled = fontsLoaded || fontError !== null;

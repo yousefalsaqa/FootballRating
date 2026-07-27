@@ -4,33 +4,41 @@ import type { ClaimOutcome } from '@/db/schema';
 import { Text } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
 
-const LABELS: Record<ClaimOutcome, string> = {
-  true: 'True',
-  partial: 'Partial',
-  false: 'False',
+/** 'pending' renders the unresolved-story stamp. */
+export type Verdict = ClaimOutcome | 'pending';
+
+const LABELS: Record<Verdict, string> = {
+  true: 'Verified true',
+  partial: 'Partially confirmed',
+  false: 'Report disproved',
+  pending: 'Developing story',
 };
 
-/** Editorial verdict stamp — heavy border, condensed caps, no fill. */
-export function VerdictStamp({ outcome, size = 'sm' }: { outcome: ClaimOutcome; size?: 'sm' | 'lg' }) {
-  const { colors, space } = useTheme();
-  const color = { true: colors.success, partial: colors.partial, false: colors.danger }[outcome];
+/** Rectangular editorial ruling — heavy border, uppercase, zero radius. */
+export function VerdictStamp({ verdict, size = 'sm' }: { verdict: Verdict; size?: 'sm' | 'lg' }) {
+  const { colors, rules, space } = useTheme();
+  const color = {
+    true: colors.success,
+    partial: colors.partial,
+    false: colors.danger,
+    pending: colors.developing,
+  }[verdict];
   return (
     <View
-      accessibilityLabel={`Verdict: ${LABELS[outcome]}`}
+      accessibilityLabel={`Verdict: ${LABELS[verdict]}`}
       style={{
-        borderWidth: 2,
+        borderWidth: rules.medium,
         borderColor: color,
-        borderRadius: 4,
         paddingHorizontal: size === 'lg' ? space.md : space.sm,
-        paddingVertical: size === 'lg' ? 4 : 2,
+        paddingVertical: size === 'lg' ? 5 : 3,
         alignSelf: 'flex-start',
       }}
     >
       <Text
         variant="stamp"
-        style={{ color, fontSize: size === 'lg' ? 20 : 15, lineHeight: size === 'lg' ? 24 : 18 }}
+        style={{ color, ...(size === 'lg' ? { fontSize: 13, lineHeight: 17 } : null) }}
       >
-        {LABELS[outcome]}
+        {LABELS[verdict]}
       </Text>
     </View>
   );

@@ -1,16 +1,14 @@
-import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { JournalistAvatar } from '@/features/journalists/components/JournalistAvatar';
 import { TierBadge } from '@/features/journalists/components/TierBadge';
 import { useRankedJournalists, type RankedJournalist } from '@/features/journalists/hooks';
-import { formatMovement, formatScore } from '@/lib/format';
+import { formatDate, formatMovement, formatScore } from '@/lib/format';
 import { extractHandleFromUrl } from '@/lib/links';
-import { Divider, EmptyState, ListRow, Screen, SearchInput, Skeleton, Text } from '@/ui/components';
+import { Divider, EmptyState, Screen, SearchInput, Skeleton, Text } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
 
 interface RankedRow {
@@ -18,56 +16,131 @@ interface RankedRow {
   rank: number;
 }
 
+function surnameOf(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return parts[parts.length - 1] ?? name;
+}
+
+function recordLine(j: RankedJournalist): string {
+  const r = j.stats.record;
+  return `${r.trueCount}–${r.partialCount}–${r.falseCount} · ${j.stats.resolvedCount} resolved`;
+}
+
 function MovementText({ movement }: { movement: number }) {
   const rounded = Math.round(movement * 10) / 10;
   const color = rounded > 0 ? 'success' : rounded < 0 ? 'danger' : 'inkTertiary';
   return (
-    <Text variant="secondary" color={color} style={{ fontVariant: ['tabular-nums'] }}>
+    <Text variant="caption" color={color} style={{ fontVariant: ['tabular-nums'] }}>
       {formatMovement(movement)}
     </Text>
   );
 }
 
-/** One column of the top-three podium strip. */
-function PodiumColumn({ row, onPress }: { row: RankedRow; onPress: () => void }) {
+/** Lead story: the first-ranked journalist as front-page news. */
+function LeadStory({ row, onPress }: { row: RankedRow; onPress: () => void }) {
+  const { colors, rules, space, gutter } = useTheme();
+  const j = row.journalist;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Rank 1, ${j.name}, reliability score ${formatScore(j.stats.score)}`}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        paddingHorizontal: gutter,
+        paddingVertical: space.lg,
+        backgroundColor: pressed ? colors.surfaceMuted : 'transparent',
+      })}
+    >
+      <Text variant="kicker" color="danger">
+        No. 1 in the reliability table
+      </Text>
+      <Text variant="display" style={{ marginTop: space.sm, fontSize: 36, lineHeight: 37 }}>
+        {surnameOf(j.name)} leads{'\n'}the transfer press
+      </Text>
+      <Text variant="body" color="inkSecondary" style={{ marginTop: space.sm }}>
+        {j.name} holds the highest reliability rating after {j.stats.resolvedCount} resolved
+        transfer claim{j.stats.resolvedCount === 1 ? '' : 's'}.
+      </Text>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'flex-end',
+          justifyContent: 'space-between',
+          marginTop: space.md,
+          borderTopWidth: rules.thin,
+          borderTopColor: colors.hairline,
+          paddingTop: space.md,
+        }}
+      >
+        <View>
+          <Text variant="score" style={{ fontSize: 56, lineHeight: 58 }}>
+            {formatScore(j.stats.score)}
+          </Text>
+          <TierBadge tier={j.stats.tier} size="lg" />
+        </View>
+        <View style={{ alignItems: 'flex-end', gap: 4 }}>
+          <Text variant="caption" color="inkSecondary" style={{ fontVariant: ['tabular-nums'] }}>
+            {recordLine(j)}
+          </Text>
+          <MovementText movement={j.stats.movement} />
+          <Text variant="caption" color="inkTertiary">
+            {j.outlet ?? 'Independent'}
+          </Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+/** Second and third place as secondary stories, side by side. */
+function SecondaryStory({ row, onPress }: { row: RankedRow; onPress: () => void }) {
   const { colors, space } = useTheme();
   const j = row.journalist;
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={`Rank ${row.rank}, ${j.name}, reliability score ${formatScore(j.stats.score)}`}
       onPress={onPress}
-      style={{ flex: 1, alignItems: 'center', paddingVertical: space.lg, gap: 2 }}
+      style={({ pressed }) => ({
+        flex: 1,
+        paddingVertical: space.md,
+        paddingHorizontal: space.md,
+        backgroundColor: pressed ? colors.surfaceMuted : 'transparent',
+        gap: 3,
+      })}
     >
-      <Text variant="rank" style={{ color: row.rank === 1 ? colors.accent : colors.navyInkSecondary, fontSize: 30 }}>
-        {row.rank}
+      <Text variant="kicker" color="inkTertiary">
+        {String(row.rank).padStart(2, '0')}
       </Text>
-      <JournalistAvatar name={j.name} color={j.avatarColor} size={36} />
-      <Text
-        variant="title"
-        style={{ color: colors.navyInk, fontSize: 18, lineHeight: 20, textAlign: 'center' }}
-        numberOfLines={1}
-      >
+      <Text variant="headline" numberOfLines={1}>
         {j.name}
       </Text>
-      <Text variant="caption" style={{ color: colors.navyInkSecondary }} numberOfLines={1}>
+      <Text variant="caption" color="inkTertiary" numberOfLines={1}>
         {j.outlet ?? '—'}
       </Text>
-      <Text variant="score" style={{ color: colors.navyInk, fontSize: 34, lineHeight: 38 }}>
-        {formatScore(j.stats.score)}
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.sm, marginTop: 2 }}>
+        <Text variant="score" style={{ fontSize: 30, lineHeight: 32 }}>
+          {formatScore(j.stats.score)}
+        </Text>
+        <Text variant="caption" color="inkSecondary">
+          {j.stats.tier ? `${j.stats.tier} tier` : 'Unranked'}
+        </Text>
+      </View>
+      <Text variant="caption" color="inkSecondary" style={{ fontVariant: ['tabular-nums'] }}>
+        {recordLine(j)}
       </Text>
-      <MovementText movement={j.stats.movement} />
     </Pressable>
   );
 }
 
-/** A league-table row: rank · identity/record · score/tier/movement. */
+/** A reliability-table line: RK · JOURNALIST/RECORD · TREND · RATING · TIER. */
 function TableRow({ row, onPress }: { row: RankedRow; onPress: () => void }) {
   const { colors, space, gutter } = useTheme();
   const { journalist: j, rank } = row;
-  const record = j.stats.record;
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={`Rank ${rank}, ${j.name}, reliability score ${formatScore(j.stats.score)}, ${j.stats.tier ? `${j.stats.tier} tier` : 'unranked'}, ${j.stats.resolvedCount} resolved claims`}
       onPress={onPress}
       style={({ pressed }) => ({
         flexDirection: 'row',
@@ -78,44 +151,40 @@ function TableRow({ row, onPress }: { row: RankedRow; onPress: () => void }) {
         backgroundColor: pressed ? colors.surfaceMuted : 'transparent',
       })}
     >
-      <Text variant="rank" color="inkTertiary" style={{ width: 34, textAlign: 'center' }}>
-        {rank}
+      <Text variant="rank" color="inkSecondary" style={{ width: 36 }}>
+        {String(rank).padStart(2, '0')}
       </Text>
       <View style={{ flex: 1, gap: 1 }}>
         <Text variant="headline" numberOfLines={1}>
           {j.name}
         </Text>
-        <Text variant="caption" color="inkTertiary" numberOfLines={1}>
-          {j.outlet ?? '—'}
-        </Text>
-        <Text variant="secondary" color="inkSecondary" style={{ fontVariant: ['tabular-nums'] }}>
-          {record.trueCount}–{record.partialCount}–{record.falseCount} · {j.stats.resolvedCount}{' '}
-          claim{j.stats.resolvedCount === 1 ? '' : 's'}
+        <Text variant="caption" color="inkTertiary" numberOfLines={1} style={{ fontVariant: ['tabular-nums'] }}>
+          {j.outlet ?? '—'} · {recordLine(j)}
         </Text>
       </View>
-      <View style={{ alignItems: 'flex-end', gap: 2 }}>
-        <Text variant="score" style={{ fontSize: 30, lineHeight: 32 }}>
+      <MovementText movement={j.stats.movement} />
+      <View style={{ alignItems: 'flex-end', width: 64 }}>
+        <Text variant="score" style={{ fontSize: 28, lineHeight: 30 }}>
           {formatScore(j.stats.score)}
         </Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-          <MovementText movement={j.stats.movement} />
-          <TierBadge tier={j.stats.tier} />
-        </View>
+        <Text variant="caption" color="inkSecondary">
+          {j.stats.tier ?? '—'}
+        </Text>
       </View>
     </Pressable>
   );
 }
 
-/** Table tab: "The Reliability Table" — masthead, podium, continuous ranking. */
+/** The front page of THE TRANSFER LEDGER. */
 export function LeaderboardScreen() {
   const router = useRouter();
-  const { colors, space, gutter } = useTheme();
+  const { colors, rules, space, gutter } = useTheme();
   const insets = useSafeAreaInsets();
   const { data, isLoading } = useRankedJournalists();
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [editionDate] = useState(() => Date.now());
 
-  // A pasted X/Twitter link resolves straight to the journalist by handle.
   const pastedHandle = extractHandleFromUrl(search);
   const handleMatch = pastedHandle
     ? (data ?? []).find((j) => j.handle === pastedHandle)
@@ -140,150 +209,277 @@ export function LeaderboardScreen() {
     );
   }, [allRows, searching, pastedHandle, search]);
 
-  const showPodium = !searching && filteredRows.length >= 3;
-  const listRows = showPodium ? filteredRows.slice(3) : filteredRows;
-  const podium = filteredRows.slice(0, 3);
+  const showFeature = !searching && filteredRows.length >= 3;
+  const tableRows = showFeature ? filteredRows.slice(3) : filteredRows;
 
-  const closeSearch = () => {
-    setSearchOpen(false);
-    setSearch('');
-  };
+  const openProfile = (row: RankedRow) => router.push(`/journalist/${row.journalist.id}`);
+
+  const Masthead = (
+    <View>
+      {/* Edition bar */}
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          paddingHorizontal: gutter,
+          paddingTop: space.sm,
+          paddingBottom: space.xs,
+        }}
+      >
+        <Text variant="caption" color="inkSecondary">
+          {formatDate(editionDate)}
+        </Text>
+        <Text variant="caption" color="inkSecondary">
+          Summer window · Edition № 1
+        </Text>
+      </View>
+      <Divider />
+      {/* Masthead */}
+      <View style={{ paddingVertical: space.md, paddingHorizontal: gutter }}>
+        <Text variant="masthead">The Transfer Ledger</Text>
+        <Text variant="caption" color="inkSecondary" style={{ textAlign: 'center', marginTop: space.xs }}>
+          The permanent record of football transfer reporting
+        </Text>
+      </View>
+      <Divider weight="strong" />
+      <View style={{ height: 2 }} />
+      <Divider />
+      {/* Section strip */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: space.lg,
+          paddingHorizontal: gutter,
+          minHeight: 44,
+        }}
+      >
+        <Text variant="stamp" color="ink" style={{ textDecorationLine: 'underline' }}>
+          Rankings
+        </Text>
+        <Text
+          variant="caption"
+          color="inkSecondary"
+          accessibilityRole="button"
+          onPress={() => router.push('/methodology')}
+        >
+          Methodology
+        </Text>
+        <View style={{ flex: 1 }} />
+        <Text
+          variant="caption"
+          color="inkSecondary"
+          accessibilityRole="button"
+          accessibilityLabel={searchOpen ? 'Close search' : 'Open search'}
+          onPress={() => {
+            setSearchOpen(!searchOpen);
+            setSearch('');
+          }}
+        >
+          {searchOpen ? 'Close ✕' : 'Search'}
+        </Text>
+        <Text
+          variant="stamp"
+          color="ink"
+          accessibilityRole="button"
+          onPress={() => router.push('/claim/new')}
+          style={{
+            borderWidth: rules.medium,
+            borderColor: colors.ink,
+            paddingHorizontal: space.sm,
+            paddingVertical: 4,
+          }}
+        >
+          File a claim
+        </Text>
+      </View>
+      {searchOpen ? (
+        <View style={{ paddingHorizontal: gutter, paddingBottom: space.md }}>
+          <SearchInput
+            placeholder="Name, outlet, or paste an X link…"
+            value={search}
+            onChangeText={setSearch}
+            autoFocus
+            accessibilityLabel="Search journalists or paste a link"
+          />
+          {pastedHandle ? (
+            handleMatch ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.push(`/journalist/${handleMatch.id}`)}
+                style={{ paddingVertical: space.md, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <View>
+                  <Text variant="headline">{handleMatch.name}</Text>
+                  <Text variant="caption" color="inkTertiary">
+                    @{handleMatch.handle} · open dossier
+                  </Text>
+                </View>
+                <Text variant="score" style={{ fontSize: 28, lineHeight: 30 }}>
+                  {formatScore(handleMatch.stats.score)}
+                </Text>
+              </Pressable>
+            ) : (
+              <View style={{ paddingVertical: space.md, gap: space.xs }}>
+                <Text variant="secondary" color="inkSecondary">
+                  No reporter with handle @{pastedHandle} in the record.
+                </Text>
+                <Text
+                  variant="caption"
+                  color="ink"
+                  onPress={() => router.push('/journalist/new')}
+                  accessibilityRole="button"
+                  style={{ textDecorationLine: 'underline' }}
+                >
+                  Add them →
+                </Text>
+              </View>
+            )
+          ) : null}
+        </View>
+      ) : null}
+      <Divider weight="medium" />
+
+      {/* Lead statement */}
+      {!searching ? (
+        <View style={{ paddingHorizontal: gutter, paddingVertical: space.lg }}>
+          <Text variant="display">Who actually{'\n'}knows?</Text>
+          <Text variant="body" color="inkSecondary" style={{ marginTop: space.sm }}>
+            Football journalists ranked by their verified transfer reporting.
+          </Text>
+          <Text
+            variant="caption"
+            color="ink"
+            accessibilityRole="button"
+            onPress={() => router.push('/methodology')}
+            style={{ marginTop: space.sm, textDecorationLine: 'underline' }}
+          >
+            How the reliability index works →
+          </Text>
+        </View>
+      ) : null}
+
+      {/* Feature: leader + runners-up */}
+      {showFeature ? (
+        <View>
+          <Divider weight="medium" />
+          <LeadStory row={filteredRows[0] as RankedRow} onPress={() => openProfile(filteredRows[0] as RankedRow)} />
+          <Divider />
+          <View style={{ flexDirection: 'row', paddingHorizontal: gutter - space.md }}>
+            <SecondaryStory row={filteredRows[1] as RankedRow} onPress={() => openProfile(filteredRows[1] as RankedRow)} />
+            <View style={{ width: rules.thin, backgroundColor: colors.hairline }} />
+            <SecondaryStory row={filteredRows[2] as RankedRow} onPress={() => openProfile(filteredRows[2] as RankedRow)} />
+          </View>
+        </View>
+      ) : null}
+
+      {/* Table header */}
+      {tableRows.length > 0 ? (
+        <View>
+          <Divider weight="strong" />
+          <View style={{ paddingHorizontal: gutter, paddingTop: space.md, paddingBottom: space.sm }}>
+            <Text variant="title">The Reliability Table</Text>
+          </View>
+          <View
+            style={{
+              flexDirection: 'row',
+              paddingHorizontal: gutter,
+              paddingBottom: space.xs,
+              gap: space.md,
+            }}
+          >
+            <Text variant="caption" color="inkTertiary" style={{ width: 36 }}>
+              RK
+            </Text>
+            <Text variant="caption" color="inkTertiary" style={{ flex: 1 }}>
+              Journalist
+            </Text>
+            <Text variant="caption" color="inkTertiary">
+              Trend
+            </Text>
+            <Text variant="caption" color="inkTertiary" style={{ width: 64, textAlign: 'right' }}>
+              Rating
+            </Text>
+          </View>
+          <Divider weight="medium" />
+        </View>
+      ) : null}
+    </View>
+  );
+
+  const Footer = (
+    <View style={{ marginTop: space.xl }}>
+      <Divider weight="strong" />
+      <View style={{ paddingHorizontal: gutter, paddingVertical: space.lg, gap: space.sm }}>
+        <Text variant="title">The Transfer Ledger</Text>
+        <Text variant="secondary" color="inkSecondary">
+          The permanent record of football transfer reporting.
+        </Text>
+        <View style={{ flexDirection: 'row', gap: space.lg, marginTop: space.xs }}>
+          <Text
+            variant="caption"
+            color="ink"
+            accessibilityRole="button"
+            onPress={() => router.push('/methodology')}
+            style={{ textDecorationLine: 'underline' }}
+          >
+            Methodology
+          </Text>
+          <Text
+            variant="caption"
+            color="ink"
+            accessibilityRole="button"
+            onPress={() => router.push('/claim/new')}
+            style={{ textDecorationLine: 'underline' }}
+          >
+            Submit a report
+          </Text>
+        </View>
+        <Text variant="secondary" color="inkTertiary" style={{ marginTop: space.xs }}>
+          Scores reflect recorded claims and available evidence. Ratings should not be interpreted
+          as absolute judgments of character.
+        </Text>
+      </View>
+    </View>
+  );
 
   return (
     <Screen scroll={false} edgeToEdge>
-      {/* Masthead */}
-      <View style={{ paddingTop: insets.top + space.md, paddingHorizontal: gutter }}>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
-          <View style={{ flex: 1 }}>
-            <Text variant="kicker" color="inkTertiary">
-              Summer window · 2026
-            </Text>
-            <Text variant="display">The Reliability Table</Text>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={searchOpen ? 'Close search' : 'Search journalists'}
-            onPress={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
-            style={{ padding: space.sm, marginBottom: 2 }}
-          >
-            <Ionicons name={searchOpen ? 'close' : 'search'} size={22} color={colors.ink} />
-          </Pressable>
-        </View>
-        <Text variant="secondary" color="inkSecondary" style={{ marginTop: 2 }}>
-          Journalists ranked by verified transfer claims
-        </Text>
-        {searchOpen ? (
-          <View style={{ marginTop: space.md }}>
-            <SearchInput
-              placeholder="Name, outlet, or paste an X link…"
-              value={search}
-              onChangeText={setSearch}
-              autoFocus
-              accessibilityLabel="Search journalists or paste a link"
-            />
-            {pastedHandle ? (
-              handleMatch ? (
-                <ListRow
-                  title={handleMatch.name}
-                  subtitle={`@${handleMatch.handle} · open scorecard`}
-                  leading={<JournalistAvatar name={handleMatch.name} color={handleMatch.avatarColor} size={36} />}
-                  trailing={
-                    <Text variant="score" style={{ fontSize: 26, lineHeight: 28 }}>
-                      {formatScore(handleMatch.stats.score)}
-                    </Text>
-                  }
-                  onPress={() => router.push(`/journalist/${handleMatch.id}`)}
-                />
-              ) : (
-                <View style={{ paddingVertical: space.md, gap: space.xs }}>
-                  <Text variant="secondary" color="inkSecondary">
-                    No journalist with handle @{pastedHandle} yet.
-                  </Text>
-                  <Text
-                    variant="secondary"
-                    color="ink"
-                    onPress={() => router.push('/journalist/new')}
-                    accessibilityRole="button"
-                  >
-                    Add them →
-                  </Text>
-                </View>
-              )
-            ) : null}
-          </View>
-        ) : null}
-        {/* Newspaper rule under the masthead */}
-        <View style={{ height: 2, backgroundColor: colors.ink, marginTop: space.md }} />
-      </View>
-
+      <View style={{ paddingTop: insets.top }} />
       {isLoading ? (
-        <View style={{ padding: gutter, gap: space.md }}>
+        <View style={{ padding: gutter, gap: space.md, paddingTop: space.xl }}>
+          <Skeleton height={40} width="70%" />
+          <Skeleton height={16} width="90%" />
+          <Skeleton height={16} width="85%" />
           <Skeleton height={120} />
           <Skeleton height={56} />
           <Skeleton height={56} />
         </View>
       ) : filteredRows.length === 0 && !pastedHandle ? (
-        <EmptyState
-          title={searching ? 'No matches' : 'No journalists yet'}
-          message={
-            searching
-              ? 'No journalist matches that search.'
-              : 'Add a journalist to start tracking transfer-claim reliability.'
-          }
-          actionLabel="Add journalist"
-          onAction={() => router.push('/journalist/new')}
-        />
-      ) : (
-        <>
-          {showPodium ? (
-            <View
-              style={{
-                flexDirection: 'row',
-                backgroundColor: colors.navy,
-                borderBottomWidth: 1,
-                borderBottomColor: colors.navyHairline,
-              }}
-            >
-              {podium.map((row, index) => (
-                <View key={row.journalist.id} style={{ flex: 1, flexDirection: 'row' }}>
-                  {index > 0 ? <View style={{ width: 1, backgroundColor: colors.navyHairline }} /> : null}
-                  <PodiumColumn row={row} onPress={() => router.push(`/journalist/${row.journalist.id}`)} />
-                </View>
-              ))}
-            </View>
-          ) : null}
-          <FlashList
-            data={listRows}
-            keyExtractor={(row) => row.journalist.id}
-            contentContainerStyle={{ paddingBottom: insets.bottom + 88 }}
-            ItemSeparatorComponent={() => <Divider />}
-            renderItem={({ item }) => (
-              <TableRow row={item} onPress={() => router.push(`/journalist/${item.journalist.id}`)} />
-            )}
+        <View>
+          {Masthead}
+          <EmptyState
+            title={searching ? 'No matches in the archive' : 'No reporters in this edition'}
+            message={
+              searching
+                ? 'No journalist matches that search.'
+                : 'Add a journalist to start building the record.'
+            }
+            actionLabel="Add journalist"
+            onAction={() => router.push('/journalist/new')}
           />
-        </>
+        </View>
+      ) : (
+        <FlashList
+          data={tableRows}
+          keyExtractor={(row) => row.journalist.id}
+          ListHeaderComponent={Masthead}
+          ListFooterComponent={Footer}
+          contentContainerStyle={{ paddingBottom: insets.bottom + space.lg }}
+          ItemSeparatorComponent={() => <Divider />}
+          renderItem={({ item }) => <TableRow row={item} onPress={() => openProfile(item)} />}
+        />
       )}
-
-      {/* The one loud element on the page: log a claim. */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Log claim"
-        onPress={() => router.push('/claim/new')}
-        style={({ pressed }) => ({
-          position: 'absolute',
-          right: gutter,
-          bottom: insets.bottom + space.lg,
-          backgroundColor: colors.accent,
-          borderRadius: 8,
-          paddingHorizontal: space.lg,
-          paddingVertical: space.md,
-          opacity: pressed ? 0.85 : 1,
-        })}
-      >
-        <Text variant="stamp" style={{ color: colors.accentInk, fontSize: 17, lineHeight: 20 }}>
-          + Log claim
-        </Text>
-      </Pressable>
     </Screen>
   );
 }

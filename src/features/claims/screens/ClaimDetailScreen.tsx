@@ -19,7 +19,7 @@ import { scoreImpact } from '@/features/scoring/engine';
 import { windowLabel } from '@/lib/dates';
 import { formatDate, formatDelta } from '@/lib/format';
 import { successTick } from '@/lib/haptics';
-import { Button, Card, EmptyState, KeyValueRow, Screen, Skeleton, Text } from '@/ui/components';
+import { Button, Card, Divider, EmptyState, KeyValueRow, Screen, Skeleton, Text } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
 
 /** Claim detail: full record, resolve actions while pending, impact once resolved. */
@@ -88,21 +88,46 @@ export function ClaimDetailScreen() {
   return (
     <Screen>
       <View style={{ gap: space.lg, paddingTop: space.lg }}>
-        <Text variant="title">{claim.headline}</Text>
+        <View style={{ gap: space.xs }}>
+          <Text variant="kicker" color="danger">
+            Transfer desk · {formatDate(claim.claimedAt)}
+          </Text>
+          <Text variant="display" style={{ fontSize: 30, lineHeight: 31 }}>
+            {claim.headline}
+          </Text>
+          {journalistQuery.data ? (
+            <Text variant="secondary" color="inkSecondary">
+              Filed by {journalistQuery.data.name}, confidence {claim.confidence}/3.
+            </Text>
+          ) : null}
+        </View>
 
         {claim.outcome ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-            <VerdictStamp outcome={claim.outcome} size="lg" />
-            {impact !== null ? (
-              <Text variant="secondary" color="inkSecondary">
-                Score impact {formatDelta(impact)}
-              </Text>
-            ) : null}
+          <View style={{ gap: space.sm }}>
+            <Text variant="kicker" color="inkTertiary">
+              Final verdict
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+              <VerdictStamp verdict={claim.outcome} size="lg" />
+              {impact !== null ? (
+                <Text variant="secondary" color="inkSecondary">
+                  Rating effect {formatDelta(impact)}
+                </Text>
+              ) : null}
+            </View>
           </View>
-        ) : null}
+        ) : (
+          <VerdictStamp verdict="pending" size="lg" />
+        )}
 
-        <Card>
-          <KeyValueRow label="Journalist" value={journalistQuery.data?.name ?? '—'} />
+        <View>
+          <Divider weight="medium" />
+          <View style={{ paddingVertical: space.sm }}>
+            <Text variant="kicker" color="inkTertiary">
+              The claim
+            </Text>
+          </View>
+          <KeyValueRow label="Reporter" value={journalistQuery.data?.name ?? '—'} />
           <KeyValueRow label="Player" value={claim.playerName} />
           {claim.fromClubName ? <KeyValueRow label="From" value={claim.fromClubName} /> : null}
           <KeyValueRow label="To" value={claim.toClubName} />
@@ -111,13 +136,14 @@ export function ClaimDetailScreen() {
           {claim.transferWindow ? (
             <KeyValueRow label="Window" value={windowLabel(claim.transferWindow)} />
           ) : null}
-          <KeyValueRow label="Claimed" value={formatDate(claim.claimedAt)} />
+          <KeyValueRow label="Filed" value={formatDate(claim.claimedAt)} />
           {claim.resolvedAt ? (
             <KeyValueRow label="Resolved" value={formatDate(claim.resolvedAt)} />
           ) : null}
           {tagList ? <KeyValueRow label="Tags" value={tagList} /> : null}
           {claim.notes ? <KeyValueRow label="Notes" value={claim.notes} /> : null}
-        </Card>
+          <Divider weight="medium" />
+        </View>
 
         {claim.sourceUrl ? (
           <Button
@@ -129,8 +155,8 @@ export function ClaimDetailScreen() {
 
         {claim.status === 'pending' ? (
           <View style={{ gap: space.md }}>
-            <Text variant="caption" color="inkTertiary">
-              Resolve
+            <Text variant="kicker" color="inkTertiary">
+              Record the outcome
             </Text>
             {claim.playerApiId !== null ? (
               <>

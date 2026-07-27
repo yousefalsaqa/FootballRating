@@ -10,7 +10,7 @@ import { useClaims, useResolveClaim } from '@/features/claims/hooks';
 import { IncomingRow } from '@/features/inbox/components';
 import { useAcceptIncoming, useInboxEnabled, useIncomingClaims } from '@/features/inbox/hooks';
 import { useJournalists } from '@/features/journalists/hooks';
-import { Chip, Divider, EmptyState, Screen, SegmentedControl, Skeleton } from '@/ui/components';
+import { Chip, Divider, EmptyState, Screen, SegmentedControl, Skeleton, Text } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
 
 /** Claims tab: pending/resolved lists across all journalists. */
@@ -50,6 +50,18 @@ export function ClaimsScreen() {
 
   return (
     <Screen scroll={false} edgeToEdge>
+      <View style={{ paddingTop: insets.top + space.md, paddingHorizontal: space.lg }}>
+        <Text variant="kicker" color="danger">
+          The Transfer Desk
+        </Text>
+        <Text variant="display" style={{ fontSize: 30, lineHeight: 31, marginTop: 2 }}>
+          Latest reports
+        </Text>
+        <Text variant="secondary" color="inkSecondary" style={{ marginTop: 2, marginBottom: space.md }}>
+          Reports filed into the public record.
+        </Text>
+      </View>
+      <Divider weight="strong" />
       <View style={{ paddingVertical: space.md, paddingHorizontal: space.lg, gap: space.md }}>
         <SegmentedControl
           options={
@@ -122,13 +134,13 @@ export function ClaimsScreen() {
         </View>
       ) : (claimsQuery.data ?? []).length === 0 ? (
         <EmptyState
-          title={status === 'pending' ? 'No pending claims' : 'No resolved claims'}
+          title="No reports filed"
           message={
             status === 'pending'
-              ? 'Log a transfer claim and resolve it once the window shuts.'
-              : 'Resolved claims appear here and feed reliability scores.'
+              ? 'The archive contains no developing stories matching these filters.'
+              : 'The archive contains no resolved reports matching these filters.'
           }
-          actionLabel={status === 'pending' ? 'Add claim' : undefined}
+          actionLabel={status === 'pending' ? 'File a claim' : undefined}
           onAction={status === 'pending' ? () => router.push('/claim/new') : undefined}
         />
       ) : (

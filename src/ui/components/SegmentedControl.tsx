@@ -9,19 +9,20 @@ interface SegmentedControlProps<T extends string> {
   onChange: (value: T) => void;
 }
 
+/** Editorial filter strip: uppercase text, active item carries a dark underline. */
 export function SegmentedControl<T extends string>({
   options,
   value,
   onChange,
 }: SegmentedControlProps<T>) {
-  const { colors, radii } = useTheme();
+  const { colors, rules, space } = useTheme();
   return (
     <View
       style={{
         flexDirection: 'row',
-        backgroundColor: colors.surfaceMuted,
-        borderRadius: radii.md,
-        padding: 3,
+        gap: space.lg,
+        borderBottomWidth: rules.thin,
+        borderBottomColor: colors.hairline,
       }}
     >
       {options.map((option) => {
@@ -33,17 +34,14 @@ export function SegmentedControl<T extends string>({
             accessibilityState={{ selected }}
             onPress={() => onChange(option.value)}
             style={{
-              flex: 1,
-              minHeight: 38,
-              borderRadius: radii.sm + 2,
-              alignItems: 'center',
+              minHeight: 40,
               justifyContent: 'center',
-              backgroundColor: selected ? colors.surface : 'transparent',
-              borderWidth: selected ? 1 : 0,
-              borderColor: colors.hairline,
+              borderBottomWidth: rules.medium,
+              borderBottomColor: selected ? colors.ink : 'transparent',
+              marginBottom: -rules.thin,
             }}
           >
-            <Text variant="secondary" color={selected ? 'ink' : 'inkSecondary'}>
+            <Text variant={selected ? 'stamp' : 'caption'} color={selected ? 'ink' : 'inkTertiary'}>
               {option.label}
             </Text>
           </Pressable>

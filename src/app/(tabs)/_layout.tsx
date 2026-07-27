@@ -1,46 +1,39 @@
-import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 
 import { useTheme } from '@/ui/theme';
 
 export default function TabsLayout() {
-  const { colors, type } = useTheme();
+  const { colors, rules, type } = useTheme();
   return (
     <Tabs
       screenOptions={{
         headerStyle: { backgroundColor: colors.bg },
         headerTintColor: colors.ink,
-        headerTitleStyle: { fontFamily: type.title.fontFamily, fontSize: 22 },
+        headerTitleStyle: { fontFamily: type.title.fontFamily, fontSize: 21, textTransform: 'uppercase' },
         headerShadowVisible: false,
-        // Scoreboard footer: deep navy with the lime accent on the active tab.
-        tabBarStyle: { backgroundColor: colors.navy, borderTopColor: colors.navyHairline },
-        tabBarActiveTintColor: colors.accent,
-        tabBarInactiveTintColor: colors.navyInkSecondary,
-        tabBarLabelStyle: { fontFamily: type.caption.fontFamily },
+        // Flat publication strip: paper, strong top rule, text-first labels.
+        tabBarStyle: {
+          backgroundColor: colors.bg,
+          borderTopWidth: rules.medium,
+          borderTopColor: colors.ruleStrong,
+          height: 58,
+        },
+        tabBarActiveTintColor: colors.ink,
+        tabBarInactiveTintColor: colors.inkTertiary,
+        tabBarIconStyle: { display: 'none' },
+        tabBarItemStyle: { justifyContent: 'center' },
+        tabBarLabelStyle: {
+          fontFamily: type.stamp.fontFamily,
+          fontSize: 11,
+          letterSpacing: 1.1,
+          textTransform: 'uppercase',
+          lineHeight: 40,
+        },
       }}
     >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Table',
-          headerShown: false,
-          tabBarIcon: ({ color, size }) => <Ionicons name="podium-outline" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="claims"
-        options={{
-          title: 'Claims',
-          tabBarIcon: ({ color, size }) => <Ionicons name="documents-outline" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: 'Settings',
-          tabBarIcon: ({ color, size }) => <Ionicons name="settings-outline" size={size} color={color} />,
-        }}
-      />
+      <Tabs.Screen name="index" options={{ title: 'Rankings', headerShown: false }} />
+      <Tabs.Screen name="claims" options={{ title: 'Reports', headerShown: false }} />
+      <Tabs.Screen name="settings" options={{ title: 'Desk' }} />
     </Tabs>
   );
 }

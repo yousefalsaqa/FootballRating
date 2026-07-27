@@ -6,27 +6,29 @@ import { useTheme } from '@/ui/theme';
 
 interface JournalistAvatarProps {
   name: string;
-  color: string;
+  /** Kept in data for future portrait tinting; the frame itself stays ink. */
+  color?: string;
   size?: number;
 }
 
-/** Initials circle — the app's only avatar style. */
-export function JournalistAvatar({ name, color, size = 44 }: JournalistAvatarProps) {
-  const { radii } = useTheme();
+/** Square editorial monogram frame — no colored avatar bubbles. */
+export function JournalistAvatar({ name, size = 44 }: JournalistAvatarProps) {
+  const { colors, rules } = useTheme();
   return (
     <View
       style={{
         width: size,
         height: size,
-        borderRadius: radii.full,
-        backgroundColor: color,
+        borderWidth: rules.thin,
+        borderColor: colors.ink,
+        backgroundColor: colors.surface,
         alignItems: 'center',
         justifyContent: 'center',
       }}
     >
       <Text
-        variant={size >= 64 ? 'title' : 'headline'}
-        style={{ color: '#FFFFFF' }}
+        variant="headline"
+        style={{ fontSize: size * 0.42, lineHeight: size * 0.5 }}
         accessibilityElementsHidden
       >
         {initialsOf(name)}

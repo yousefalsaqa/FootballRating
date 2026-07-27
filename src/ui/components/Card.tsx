@@ -8,17 +8,17 @@ interface CardProps {
   style?: StyleProp<ViewStyle>;
 }
 
-/** Surface with hairline border — the standard content container. */
+/** Thin printed frame — used sparingly; prefer rules and alignment. */
 export function Card({ children, style }: CardProps) {
-  const { colors, radii, space } = useTheme();
+  const { colors, radii, rules, space } = useTheme();
   return (
     <View
       style={[
         {
           backgroundColor: colors.surface,
-          borderRadius: radii.lg,
-          borderWidth: 1,
-          borderColor: colors.hairline,
+          borderRadius: radii.sm,
+          borderWidth: rules.thin,
+          borderColor: colors.ruleMedium,
           padding: space.lg,
         },
         style,

@@ -1,5 +1,4 @@
 import { Pressable, type StyleProp, type ViewStyle } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { lightTap } from '@/lib/haptics';
 import { Text } from '@/ui/components/Text';
@@ -17,6 +16,7 @@ interface ButtonProps {
   style?: StyleProp<ViewStyle>;
 }
 
+/** Rectangular editorial control: ink fill or ink border, uppercase label. */
 export function Button({
   label,
   onPress,
@@ -25,16 +25,16 @@ export function Button({
   haptic,
   style,
 }: ButtonProps) {
-  const theme = useTheme();
-  const scale = useSharedValue(1);
-  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
+  const { colors, radii, rules, space } = useTheme();
 
-  const { colors, radii, space } = theme;
-  const variantStyles: Record<ButtonVariant, { bg: string; ink: string; border?: string }> = {
-    primary: { bg: colors.actionBg, ink: colors.actionInk },
-    secondary: { bg: colors.surface, ink: colors.ink, border: colors.hairline },
-    ghost: { bg: 'transparent', ink: colors.inkSecondary },
-    destructive: { bg: colors.dangerBg, ink: colors.danger },
+  const variantStyles: Record<
+    ButtonVariant,
+    { bg: string; ink: string; borderColor: string; borderWidth: number }
+  > = {
+    primary: { bg: colors.actionBg, ink: colors.actionInk, borderColor: colors.actionBg, borderWidth: rules.medium },
+    secondary: { bg: 'transparent', ink: colors.ink, borderColor: colors.ink, borderWidth: rules.medium },
+    ghost: { bg: 'transparent', ink: colors.inkSecondary, borderColor: 'transparent', borderWidth: rules.medium },
+    destructive: { bg: 'transparent', ink: colors.danger, borderColor: colors.danger, borderWidth: rules.medium },
   };
   const v = variantStyles[variant];
 
@@ -46,34 +46,29 @@ export function Button({
   };
 
   return (
-    <Animated.View style={[animatedStyle, style]}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        disabled={disabled}
-        onPress={handlePress}
-        onPressIn={() => {
-          scale.set(withTiming(0.97, { duration: 80 }));
-        }}
-        onPressOut={() => {
-          scale.set(withTiming(1, { duration: 120 }));
-        }}
-        style={{
-          minHeight: 48,
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      disabled={disabled}
+      onPress={handlePress}
+      style={({ pressed }) => [
+        {
+          minHeight: 46,
           borderRadius: radii.md,
-          backgroundColor: v.bg,
-          borderWidth: v.border ? 1 : 0,
-          borderColor: v.border,
+          backgroundColor: pressed && v.bg === 'transparent' ? colors.surfaceMuted : v.bg,
+          borderWidth: v.borderWidth,
+          borderColor: v.borderColor,
           alignItems: 'center',
           justifyContent: 'center',
           paddingHorizontal: space.xl,
-          opacity: disabled ? 0.4 : 1,
-        }}
-      >
-        <Text variant="headline" style={{ color: v.ink }}>
-          {label}
-        </Text>
-      </Pressable>
-    </Animated.View>
+          opacity: disabled ? 0.4 : pressed ? 0.85 : 1,
+        },
+        style,
+      ]}
+    >
+      <Text variant="stamp" style={{ color: v.ink, fontSize: 12, lineHeight: 16 }}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }

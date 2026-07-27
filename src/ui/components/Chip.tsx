@@ -9,25 +9,25 @@ interface ChipProps {
   onPress?: () => void;
 }
 
-/** Filter/tag chip. */
+/** Compact rectangular filter — editorial, not a pill. */
 export function Chip({ label, selected, onPress }: ChipProps) {
-  const { colors, radii, space } = useTheme();
+  const { colors, radii, rules, space } = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected: !!selected }}
       onPress={onPress}
       style={{
-        borderRadius: radii.full,
-        borderWidth: 1,
-        borderColor: selected ? colors.actionBg : colors.hairline,
-        backgroundColor: selected ? colors.actionBg : colors.surface,
-        paddingHorizontal: space.lg,
-        minHeight: 36,
+        borderRadius: radii.sm,
+        borderWidth: rules.thin,
+        borderColor: selected ? colors.ink : colors.hairline,
+        backgroundColor: selected ? colors.actionBg : 'transparent',
+        paddingHorizontal: space.md,
+        minHeight: 34,
         justifyContent: 'center',
       }}
     >
-      <Text variant="secondary" style={{ color: selected ? colors.actionInk : colors.ink }}>
+      <Text variant="caption" style={{ color: selected ? colors.actionInk : colors.inkSecondary }}>
         {label}
       </Text>
     </Pressable>

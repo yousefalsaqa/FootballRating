@@ -9,27 +9,26 @@ interface TierBadgeProps {
   size?: 'sm' | 'lg';
 }
 
-/** Muted tier chip; renders an outline "–" while unranked. */
+/** Editorial tier classification — bordered type, not a colored game badge. */
 export function TierBadge({ tier, size = 'sm' }: TierBadgeProps) {
-  const { tiers, colors, radii } = useTheme();
-  const dimension = size === 'lg' ? 40 : 28;
-  const palette = tier ? tiers[tier] : { bg: 'transparent', ink: colors.inkTertiary };
+  const { colors, rules, space } = useTheme();
   return (
     <View
-      accessibilityLabel={tier ? `Tier ${tier}` : 'Unranked'}
+      accessibilityLabel={tier ? `${tier} tier` : 'Unranked'}
       style={{
-        width: dimension,
-        height: dimension,
-        borderRadius: radii.sm,
-        backgroundColor: palette.bg,
-        borderWidth: tier ? 0 : 1,
-        borderColor: colors.hairline,
-        alignItems: 'center',
-        justifyContent: 'center',
+        borderWidth: rules.thin,
+        borderColor: tier ? colors.ink : colors.hairline,
+        paddingHorizontal: size === 'lg' ? space.sm : 5,
+        paddingVertical: size === 'lg' ? 3 : 1,
+        alignSelf: 'flex-start',
       }}
     >
-      <Text variant={size === 'lg' ? 'title' : 'headline'} style={{ color: palette.ink }}>
-        {tier ?? '–'}
+      <Text
+        variant="stamp"
+        color={tier ? 'ink' : 'inkTertiary'}
+        style={size === 'lg' ? { fontSize: 13, lineHeight: 17 } : undefined}
+      >
+        {tier ? `${tier} tier` : 'Unranked'}
       </Text>
     </View>
   );
