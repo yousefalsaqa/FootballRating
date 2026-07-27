@@ -1,6 +1,8 @@
 import Constants from 'expo-constants';
 import { View } from 'react-native';
 
+import { DAILY_BUDGET } from '@/features/football/cache';
+import { useApiUsage } from '@/features/football/hooks';
 import { useSettingsStore } from '@/features/settings/store';
 import { Card, KeyValueRow, Screen, SegmentedControl, Text } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
@@ -9,6 +11,7 @@ import { useTheme } from '@/ui/theme';
 export function SettingsScreen() {
   const { space } = useTheme();
   const { themePreference, setThemePreference } = useSettingsStore();
+  const usageQuery = useApiUsage();
 
   return (
     <Screen>
@@ -26,6 +29,19 @@ export function SettingsScreen() {
             value={themePreference}
             onChange={setThemePreference}
           />
+        </View>
+
+        <View style={{ gap: space.sm }}>
+          <Text variant="caption" color="inkTertiary">
+            Football data
+          </Text>
+          <Card>
+            <KeyValueRow
+              label="API lookups today"
+              value={`${usageQuery.data ?? 0} / ${DAILY_BUDGET}`}
+            />
+            <KeyValueRow label="Provider" value="api-sports.io" />
+          </Card>
         </View>
 
         <View style={{ gap: space.sm }}>

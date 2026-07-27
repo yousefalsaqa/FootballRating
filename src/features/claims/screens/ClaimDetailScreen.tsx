@@ -13,6 +13,7 @@ import {
   useResolveClaim,
   useScoringRows,
 } from '@/features/claims/hooks';
+import { useTransferCheck } from '@/features/football/hooks';
 import { useJournalist } from '@/features/journalists/hooks';
 import { scoreImpact } from '@/features/scoring/engine';
 import { windowLabel } from '@/lib/dates';
@@ -33,6 +34,7 @@ export function ClaimDetailScreen() {
   const resolveMutation = useResolveClaim();
   const reopenMutation = useReopenClaim();
   const deleteMutation = useDeleteClaim();
+  const transferCheck = useTransferCheck();
 
   const impact = useMemo(() => {
     if (!claim || claim.status !== 'resolved' || !claim.outcome || !rowsQuery.data) {
@@ -121,6 +123,40 @@ export function ClaimDetailScreen() {
             <Text variant="caption" color="inkTertiary">
               Resolve
             </Text>
+            {claim.playerApiId !== null ? (
+              <>
+                <Button
+                  label={transferCheck.isPending ? 'Checking…' : 'Check transfer records'}
+                  variant="secondary"
+                  disabled={transferCheck.isPending}
+                  onPress={() => transferCheck.mutate(claim.playerApiId as number)}
+                />
+                {transferCheck.data?.ok ? (
+                  <Card>
+                    {transferCheck.data.data.length === 0 ||
+                    (transferCheck.data.data[0]?.transfers.length ?? 0) === 0 ? (
+                      <Text variant="secondary" color="inkSecondary">
+                        No transfer records found for this player.
+                      </Text>
+                    ) : (
+                      transferCheck.data.data[0]?.transfers.slice(0, 3).map((t, i) => (
+                        <KeyValueRow
+                          key={`${t.date}-${i}`}
+                          label={t.date}
+                          value={`${t.teams.out.name ?? '?'} → ${t.teams.in.name ?? '?'}`}
+                        />
+                      ))
+                    )}
+                  </Card>
+                ) : transferCheck.data ? (
+                  <Text variant="secondary" color="inkTertiary">
+                    {transferCheck.data.reason === 'budget'
+                      ? 'Daily lookup limit reached — resolve manually today.'
+                      : 'Lookup unavailable — resolve manually.'}
+                  </Text>
+                ) : null}
+              </>
+            ) : null}
             <Button label="Came true" onPress={() => resolve('true')} haptic />
             <Button label="Partially true" variant="secondary" onPress={() => resolve('partial')} />
             <Button label="False" variant="destructive" onPress={() => resolve('false')} />

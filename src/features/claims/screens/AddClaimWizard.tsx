@@ -5,6 +5,8 @@ import { View } from 'react-native';
 import { CONFIDENCE_LABELS } from '@/features/claims/components';
 import { useCreateClaim } from '@/features/claims/hooks';
 import { useClaimDraftStore } from '@/features/claims/store';
+import { SuggestionList } from '@/features/football/components';
+import { usePlayerSearch, useTeamSearch } from '@/features/football/hooks';
 import { JournalistAvatar } from '@/features/journalists/components/JournalistAvatar';
 import { useJournalists } from '@/features/journalists/hooks';
 import { CONFIDENCE_LEVELS } from '@/db/schema';
@@ -60,6 +62,11 @@ export function AddClaimWizard() {
   const selectedJournalist = (journalistsQuery.data ?? []).find(
     (j) => j.id === draft.journalistId,
   );
+
+  // Autocomplete only while the field is being typed (id not yet picked).
+  const playerSearch = usePlayerSearch(draft.playerApiId === null ? draft.playerName : '');
+  const fromClubSearch = useTeamSearch(draft.fromClubApiId === null ? draft.fromClubName : '');
+  const toClubSearch = useTeamSearch(draft.toClubApiId === null ? draft.toClubName : '');
 
   const transferLine = draft.fromClubName
     ? `${draft.playerName}: ${draft.fromClubName} → ${draft.toClubName}`
@@ -172,6 +179,20 @@ export function AddClaimWizard() {
                 onChangeText={(playerName) => patchDraft({ playerName, playerApiId: null })}
                 autoCapitalize="words"
               />
+              <SuggestionList
+                suggestions={
+                  playerSearch.data?.ok
+                    ? playerSearch.data.data.map((p) => ({
+                        id: p.player.id,
+                        title: p.player.name,
+                        subtitle: p.player.nationality ?? undefined,
+                      }))
+                    : []
+                }
+                isFetching={playerSearch.isFetching}
+                failure={playerSearch.data?.ok === false ? playerSearch.data.reason : undefined}
+                onSelect={(s) => patchDraft({ playerName: s.title, playerApiId: s.id })}
+              />
             </View>
             <View style={{ gap: space.sm }}>
               <FieldLabel>From club (optional)</FieldLabel>
@@ -181,6 +202,20 @@ export function AddClaimWizard() {
                 onChangeText={(fromClubName) => patchDraft({ fromClubName, fromClubApiId: null })}
                 autoCapitalize="words"
               />
+              <SuggestionList
+                suggestions={
+                  fromClubSearch.data?.ok
+                    ? fromClubSearch.data.data.map((t) => ({
+                        id: t.team.id,
+                        title: t.team.name,
+                        subtitle: t.team.country ?? undefined,
+                      }))
+                    : []
+                }
+                isFetching={fromClubSearch.isFetching}
+                failure={fromClubSearch.data?.ok === false ? fromClubSearch.data.reason : undefined}
+                onSelect={(s) => patchDraft({ fromClubName: s.title, fromClubApiId: s.id })}
+              />
             </View>
             <View style={{ gap: space.sm }}>
               <FieldLabel>To club</FieldLabel>
@@ -189,6 +224,20 @@ export function AddClaimWizard() {
                 value={draft.toClubName}
                 onChangeText={(toClubName) => patchDraft({ toClubName, toClubApiId: null })}
                 autoCapitalize="words"
+              />
+              <SuggestionList
+                suggestions={
+                  toClubSearch.data?.ok
+                    ? toClubSearch.data.data.map((t) => ({
+                        id: t.team.id,
+                        title: t.team.name,
+                        subtitle: t.team.country ?? undefined,
+                      }))
+                    : []
+                }
+                isFetching={toClubSearch.isFetching}
+                failure={toClubSearch.data?.ok === false ? toClubSearch.data.reason : undefined}
+                onSelect={(s) => patchDraft({ toClubName: s.title, toClubApiId: s.id })}
               />
             </View>
             <View style={{ gap: space.sm }}>
