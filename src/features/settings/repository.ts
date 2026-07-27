@@ -1,4 +1,4 @@
-import { inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { db } from '@/db/client';
@@ -69,6 +69,8 @@ export async function exportSnapshot(now: number): Promise<ExportSnapshot> {
 export interface ImportResult {
   journalists: number;
   claims: number;
+  /** Local pending claims that received a resolution from the snapshot. */
+  resolutions: number;
 }
 
 /** Merges a snapshot into the current database. Never overwrites local data. */
@@ -103,12 +105,27 @@ export async function importSnapshot(snapshot: ExportSnapshot): Promise<ImportRe
   }
 
   // Claims: new ids only, journalist id remapped where it merged by name.
-  const existingClaims = new Set((await db.select({ id: claims.id }).from(claims)).map((r) => r.id));
+  const localClaimRows = await db.select({ id: claims.id, status: claims.status }).from(claims);
+  const existingClaims = new Set(localClaimRows.map((r) => r.id));
   const newClaims = snapshot.claims
     .map((c) => ({ ...c, journalistId: journalistIdRemap.get(c.journalistId) ?? c.journalistId }))
     .filter((c) => !existingClaims.has(c.id) && localJournalistIds.has(c.journalistId));
   if (newClaims.length) {
     await db.insert(claims).values(newClaims);
+  }
+
+  // Resolutions propagate: a claim we both hold (same id) that the snapshot
+  // has resolved and we still have pending takes the snapshot's verdict.
+  const pendingLocal = new Set(localClaimRows.filter((r) => r.status === 'pending').map((r) => r.id));
+  let resolutions = 0;
+  for (const c of snapshot.claims) {
+    if (c.status === 'resolved' && c.outcome && pendingLocal.has(c.id)) {
+      await db
+        .update(claims)
+        .set({ status: 'resolved', outcome: c.outcome, resolvedAt: c.resolvedAt ?? c.claimedAt })
+        .where(eq(claims.id, c.id));
+      resolutions += 1;
+    }
   }
 
   // Tags: same id or same (unique) name → same tag; remap link ids accordingly.
@@ -158,5 +175,5 @@ export async function importSnapshot(snapshot: ExportSnapshot): Promise<ImportRe
     }
   }
 
-  return { journalists: newJournalists.length, claims: newClaims.length };
+  return { journalists: newJournalists.length, claims: newClaims.length, resolutions };
 }

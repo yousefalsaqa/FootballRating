@@ -47,7 +47,7 @@ const SEEN_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
   'content-type': 'application/json',
 };
 
@@ -502,8 +502,55 @@ export default {
     const url = new URL(request.url);
     if (request.method === 'OPTIONS') {
       return new Response(null, {
-        headers: { ...CORS_HEADERS, 'Access-Control-Allow-Headers': 'content-type' },
+        headers: { ...CORS_HEADERS, 'Access-Control-Allow-Headers': 'content-type, x-ledger-key' },
       });
+    }
+    // Shared ledger: one KV-stored snapshot all the user's devices merge into.
+    // The first passcode to write claims the ledger; every call must match it.
+    if (url.pathname === '/ledger') {
+      const key = request.headers.get('x-ledger-key')?.trim() ?? '';
+      if (!key) {
+        return new Response(JSON.stringify({ error: 'missing key' }), {
+          status: 401,
+          headers: CORS_HEADERS,
+        });
+      }
+      const keyHash = await sha1(`ledger-key:${key}`);
+      const claimedHash = await env.INGEST_KV.get('ledger:keyhash');
+      if (claimedHash && claimedHash !== keyHash) {
+        return new Response(JSON.stringify({ error: 'wrong key' }), {
+          status: 403,
+          headers: CORS_HEADERS,
+        });
+      }
+      if (request.method === 'GET') {
+        const data = claimedHash ? await env.INGEST_KV.get('ledger:data') : null;
+        return new Response(JSON.stringify({ snapshot: data ? JSON.parse(data) : null }), {
+          headers: CORS_HEADERS,
+        });
+      }
+      if (request.method === 'PUT') {
+        const body = await request.text();
+        if (body.length > 4 * 1024 * 1024) {
+          return new Response(JSON.stringify({ error: 'too large' }), {
+            status: 413,
+            headers: CORS_HEADERS,
+          });
+        }
+        try {
+          JSON.parse(body);
+        } catch {
+          return new Response(JSON.stringify({ error: 'not json' }), {
+            status: 400,
+            headers: CORS_HEADERS,
+          });
+        }
+        if (!claimedHash) {
+          await env.INGEST_KV.put('ledger:keyhash', keyHash);
+        }
+        await env.INGEST_KV.put('ledger:data', body);
+        return new Response(JSON.stringify({ ok: true }), { headers: CORS_HEADERS });
+      }
     }
     // Outcome check for pending claims (max 5 per call).
     if (url.pathname === '/resolve' && request.method === 'POST') {

@@ -1,9 +1,9 @@
-import * as Linking from 'expo-linking';
 import { View } from 'react-native';
 
 import { ConfidenceDots } from '@/features/claims/components';
 import type { IncomingClaim } from '@/features/inbox/api';
 import { formatDate } from '@/lib/format';
+import { openExternal } from '@/lib/open-url';
 import { Button, Text } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
 
@@ -51,7 +51,7 @@ export function IncomingRow({ draft, journalistName, onAccept, onDismiss }: Inco
           color="ink"
           accessibilityRole="link"
           accessibilityLabel={`View source at ${sourceHost(draft.sourceUrl)}`}
-          onPress={() => void Linking.openURL(draft.sourceUrl)}
+          onPress={() => openExternal(draft.sourceUrl)}
           style={{ textDecorationLine: 'underline' }}
         >
           {sourceHost(draft.sourceUrl)} →

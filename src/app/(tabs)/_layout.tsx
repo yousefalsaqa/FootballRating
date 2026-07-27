@@ -2,15 +2,18 @@ import { Tabs } from 'expo-router';
 
 import { useDedupeClaims } from '@/features/claims/hooks';
 import { useAutoFileIncoming, useAutoResolve } from '@/features/inbox/hooks';
+import { useLedgerSync } from '@/features/settings/hooks';
 import { useTheme } from '@/ui/theme';
 
 export default function TabsLayout() {
   const { colors, rules, type } = useTheme();
-  // Collapses any duplicate filings first, then files fresh wire reports and
-  // records conclusive outcomes automatically (both toggleable in Desk).
+  // Collapses any duplicate filings first, then files fresh wire reports,
+  // records conclusive outcomes, and syncs the shared ledger (all managed
+  // from Desk).
   useDedupeClaims();
   useAutoFileIncoming();
   useAutoResolve();
+  useLedgerSync();
   return (
     <Tabs
       screenOptions={{

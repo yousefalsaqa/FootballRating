@@ -1,4 +1,3 @@
-import * as Linking from 'expo-linking';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { Alert, View } from 'react-native';
@@ -20,6 +19,7 @@ import { windowLabel } from '@/lib/dates';
 import { formatDate, formatDelta } from '@/lib/format';
 import { successTick } from '@/lib/haptics';
 import { normalizeSourceUrl } from '@/lib/links';
+import { openExternal } from '@/lib/open-url';
 import { Button, Card, Divider, EmptyState, KeyValueRow, Screen, Skeleton, Text } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
 
@@ -150,7 +150,7 @@ export function ClaimDetailScreen() {
           <Button
             label="View source"
             variant="secondary"
-            onPress={() => void Linking.openURL(normalizeSourceUrl(claim.sourceUrl as string))}
+            onPress={() => openExternal(normalizeSourceUrl(claim.sourceUrl as string))}
           />
         ) : null}
 

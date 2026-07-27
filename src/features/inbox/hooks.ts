@@ -16,6 +16,8 @@ import { currentTransferWindow } from '@/lib/dates';
 import { kv } from '@/lib/kv';
 import { queryKeys } from '@/lib/query-client';
 
+export { ingestUrl } from '@/features/inbox/api';
+
 /** Whether the ingest worker is configured — gates all inbox UI. */
 export function useInboxEnabled(): boolean {
   return ingestUrl() !== undefined;

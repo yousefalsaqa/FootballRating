@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 
+import { SYNC_KEY_KV } from '@/features/settings/sync';
 import { kv } from '@/lib/kv';
 import type { ThemePreference } from '@/ui/theme';
 
@@ -16,6 +17,9 @@ interface SettingsState {
   /** Automatically record outcomes when press coverage is conclusive (default on). */
   autoResolve: boolean;
   setAutoResolve: (enabled: boolean) => void;
+  /** Shared-ledger passcode; sync runs only while one is set. */
+  syncKey: string | null;
+  setSyncKey: (key: string | null) => void;
 }
 
 function loadThemePreference(): ThemePreference {
@@ -39,5 +43,14 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setAutoResolve: (enabled) => {
     kv.setItemSync(AUTO_RESOLVE_KEY, enabled ? 'on' : 'off');
     set({ autoResolve: enabled });
+  },
+  syncKey: kv.getItemSync(SYNC_KEY_KV) || null,
+  setSyncKey: (key) => {
+    if (key) {
+      kv.setItemSync(SYNC_KEY_KV, key);
+    } else {
+      kv.removeItemSync(SYNC_KEY_KV);
+    }
+    set({ syncKey: key });
   },
 }));

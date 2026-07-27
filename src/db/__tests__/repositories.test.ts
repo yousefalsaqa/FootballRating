@@ -193,3 +193,29 @@ describe('deleteDuplicateClaims', () => {
     await deleteJournalist(j.id);
   });
 });
+
+describe('ledger snapshot merge', () => {
+  test('importSnapshot applies resolutions to same-id pending claims', async () => {
+    const { exportSnapshot, importSnapshot } = require('@/features/settings/repository');
+    const j = await createJournalist({ name: 'Sync Reporter' });
+    const claim = await createClaim(claimInput(j.id, { headline: 'sync me', transferWindow: '2026-summer' }));
+
+    // Another device resolved the same claim (same id) — simulate its snapshot.
+    const snapshot = await exportSnapshot(Date.now());
+    const remote = {
+      ...snapshot,
+      claims: snapshot.claims.map((c: { id: string }) =>
+        c.id === claim.id
+          ? { ...c, status: 'resolved', outcome: 'true', resolvedAt: Date.now() }
+          : c,
+      ),
+    };
+
+    const result = await importSnapshot(remote);
+    expect(result.resolutions).toBe(1);
+    const updated = await getClaim(claim.id);
+    expect(updated?.status).toBe('resolved');
+    expect(updated?.outcome).toBe('true');
+    await deleteJournalist(j.id);
+  });
+});

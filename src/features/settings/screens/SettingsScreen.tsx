@@ -7,7 +7,9 @@ import { DAILY_BUDGET } from '@/features/football/cache';
 import { useApiUsage } from '@/features/football/hooks';
 import { exportDataToFile, importDataFromFile } from '@/features/settings/data-export';
 import { useSettingsStore } from '@/features/settings/store';
-import { Button, Card, KeyValueRow, Screen, SegmentedControl, Text } from '@/ui/components';
+import { lastSyncedAt, syncLedger } from '@/features/settings/sync';
+import { formatDate } from '@/lib/format';
+import { Button, Card, KeyValueRow, Screen, SearchInput, SegmentedControl, Text } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
 
 /** Settings tab: appearance and app info. Data controls arrive with export. */
@@ -20,10 +22,56 @@ export function SettingsScreen() {
     setAutoFileIncoming,
     autoResolve,
     setAutoResolve,
+    syncKey,
+    setSyncKey,
   } = useSettingsStore();
   const usageQuery = useApiUsage();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
+  const [passcodeDraft, setPasscodeDraft] = useState('');
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [syncedAt, setSyncedAt] = useState<number | null>(() => lastSyncedAt());
+
+  const runSync = async () => {
+    setSyncBusy(true);
+    setSyncMessage(null);
+    try {
+      const outcome = await syncLedger(Date.now());
+      if (outcome.status === 'synced') {
+        const { journalists, claims, resolutions } = outcome.pulled;
+        const pulledTotal = journalists + claims + resolutions;
+        if (pulledTotal > 0) {
+          void queryClient.invalidateQueries();
+        }
+        setSyncedAt(outcome.at);
+        setSyncMessage(
+          pulledTotal > 0
+            ? `Synced — pulled ${claims} claims, ${resolutions} verdicts, ${journalists} journalists.`
+            : outcome.pushed
+              ? 'Synced — this device’s record is now the shared ledger.'
+              : 'Synced — everything already matches.',
+        );
+      } else if (outcome.status === 'wrong-key') {
+        setSyncMessage('That passcode doesn’t match the ledger. Use the same passcode on every device.');
+      } else {
+        setSyncMessage('Could not reach the sync service — try again in a minute.');
+      }
+    } finally {
+      setSyncBusy(false);
+    }
+  };
+
+  const enableSync = () => {
+    const key = passcodeDraft.trim();
+    if (key.length < 4) {
+      setSyncMessage('Pick a passcode of at least 4 characters.');
+      return;
+    }
+    setSyncKey(key);
+    setPasscodeDraft('');
+    void runSync();
+  };
 
   const runExport = async () => {
     setBusy(true);
@@ -107,6 +155,60 @@ export function SettingsScreen() {
 
         <View style={{ gap: space.sm }}>
           <Text variant="caption" color="inkTertiary">
+            Sync across devices
+          </Text>
+          {syncKey ? (
+            <View style={{ gap: space.sm }}>
+              <Card>
+                <KeyValueRow label="Status" value="On" />
+                <KeyValueRow label="Last synced" value={syncedAt ? formatDate(syncedAt) : '—'} />
+              </Card>
+              <Button
+                label={syncBusy ? 'Syncing…' : 'Sync now'}
+                variant="secondary"
+                onPress={() => void runSync()}
+                disabled={syncBusy}
+              />
+              <Button
+                label="Turn off sync"
+                variant="secondary"
+                onPress={() => {
+                  setSyncKey(null);
+                  setSyncMessage('Sync is off. Your record stays on this device.');
+                }}
+                disabled={syncBusy}
+              />
+            </View>
+          ) : (
+            <View style={{ gap: space.sm }}>
+              <Text variant="secondary" color="inkTertiary">
+                One shared record for all your devices. Pick a passcode here, then enter the same
+                passcode on your other device — claims, verdicts, and journalists merge both ways
+                every few minutes.
+              </Text>
+              <SearchInput
+                placeholder="Choose a sync passcode…"
+                value={passcodeDraft}
+                onChangeText={setPasscodeDraft}
+                accessibilityLabel="Sync passcode"
+              />
+              <Button
+                label="Turn on sync"
+                variant="secondary"
+                onPress={enableSync}
+                disabled={syncBusy || passcodeDraft.trim().length === 0}
+              />
+            </View>
+          )}
+          {syncMessage ? (
+            <Text variant="secondary" color="inkSecondary">
+              {syncMessage}
+            </Text>
+          ) : null}
+        </View>
+
+        <View style={{ gap: space.sm }}>
+          <Text variant="caption" color="inkTertiary">
             Football data
           </Text>
           <Card>
@@ -134,7 +236,10 @@ export function SettingsScreen() {
           </Text>
           <Card>
             <KeyValueRow label="Version" value={Constants.expoConfig?.version ?? '—'} />
-            <KeyValueRow label="Data" value="Stored only on this device" />
+            <KeyValueRow
+              label="Data"
+              value={syncKey ? 'On this device · synced ledger' : 'Stored only on this device'}
+            />
           </Card>
         </View>
       </View>

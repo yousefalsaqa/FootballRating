@@ -20,7 +20,7 @@ import {
 } from '@/features/claims/repository';
 import { queryKeys } from '@/lib/query-client';
 
-export { claimStoryKey } from '@/features/claims/repository';
+export { claimStoryKey, deleteDuplicateClaims } from '@/features/claims/repository';
 
 export function useClaims(filter?: ClaimFilter) {
   return useQuery({

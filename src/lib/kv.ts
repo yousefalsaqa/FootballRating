@@ -4,4 +4,7 @@ import Storage from 'expo-sqlite/kv-store';
 export const kv = {
   getItemSync: (key: string): string | null => Storage.getItemSync(key),
   setItemSync: (key: string, value: string): void => Storage.setItemSync(key, value),
+  removeItemSync: (key: string): void => {
+    Storage.removeItemSync(key);
+  },
 };
