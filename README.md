@@ -1,56 +1,27 @@
-# Welcome to your Expo app 👋
+# Journalist Rater
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Track football journalists' transfer claims and find out who's actually reliable.
 
-## Get started
+Log a claim ("Romano: Wirtz to Liverpool — here we go"), resolve it when the window shuts (came true / partially / false), and every journalist earns a 0–100 reliability score and an S–D tier. Wrong "here we go"s hurt three times more than wrong speculative links; old form fades with an 18-month half-life; small samples are smoothed so a lucky 2-for-2 can't outrank a proven 45-for-50.
 
-1. Install dependencies
+- **Local-first** — everything lives in SQLite on your device; no account, no tracking
+- **Real football data** — player/club autocomplete and transfer verification via api-sports.io, with a strict 100-requests/day budget guard and offline fallback
+- **iOS + Android** from one Expo codebase
 
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Development
 
 ```bash
-npm run reset-project
+npm install
+npm start          # Expo dev server — scan the QR with Expo Go
+npm test           # scoring engine, repositories (real SQL), API cache/budget
+npm run typecheck  # strict TS
+npm run lint
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Put your api-sports.io key in `.env.local`:
 
-### Other setup steps
+```
+EXPO_PUBLIC_API_FOOTBALL_KEY=...
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Architecture and contribution rules live in [CLAUDE.md](CLAUDE.md). Release process lives in [RELEASING.md](RELEASING.md).
