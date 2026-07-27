@@ -1,3 +1,4 @@
+import { BarlowCondensed_700Bold } from '@expo-google-fonts/barlow-condensed';
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -106,6 +107,7 @@ export default function RootLayout() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
+    BarlowCondensed_700Bold,
   });
   // A font failure must not deadlock the splash — render with fallback fonts.
   const fontsSettled = fontsLoaded || fontError !== null;

@@ -70,15 +70,37 @@ export function currentStreak(claims: readonly ScorableClaim[]): number {
   return streak;
 }
 
+const MOVEMENT_WINDOW_DAYS = 30;
+
+/**
+ * Score points attributable to recently-resolved claims: current score minus
+ * the score with the last 30 days of resolutions removed. Positive = climbing.
+ */
+export function recentMovement(claims: readonly ScorableClaim[], now: number): number {
+  const cutoff = now - MOVEMENT_WINDOW_DAYS * MS_PER_DAY;
+  const older = claims.filter((c) => (c.resolvedAt ?? 0) < cutoff);
+  if (older.length === claims.length) {
+    return 0;
+  }
+  return reliabilityScore(claims, now) - reliabilityScore(older, now);
+}
+
 /** Full stat block for one journalist's resolved claims. */
 export function computeStats(claims: readonly ScorableClaim[], now: number): JournalistStats {
   const score = reliabilityScore(claims, now);
+  const card = computeScorecard(claims, now);
   return {
     score,
     tier: tierForScore(score, claims.length),
     resolvedCount: claims.length,
     accuracy: rawAccuracy(claims),
     streak: currentStreak(claims),
+    record: {
+      trueCount: card.trueCount,
+      partialCount: card.partialCount,
+      falseCount: card.falseCount,
+    },
+    movement: recentMovement(claims, now),
   };
 }
 

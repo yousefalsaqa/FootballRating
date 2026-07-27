@@ -10,18 +10,20 @@ export default function TabsLayout() {
       screenOptions={{
         headerStyle: { backgroundColor: colors.bg },
         headerTintColor: colors.ink,
-        headerTitleStyle: { fontFamily: type.headline.fontFamily },
+        headerTitleStyle: { fontFamily: type.title.fontFamily, fontSize: 22 },
         headerShadowVisible: false,
-        tabBarStyle: { backgroundColor: colors.bg, borderTopColor: colors.hairline },
-        tabBarActiveTintColor: colors.ink,
-        tabBarInactiveTintColor: colors.inkTertiary,
+        // Scoreboard footer: deep navy with the lime accent on the active tab.
+        tabBarStyle: { backgroundColor: colors.navy, borderTopColor: colors.navyHairline },
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.navyInkSecondary,
         tabBarLabelStyle: { fontFamily: type.caption.fontFamily },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Rankings',
+          title: 'Table',
+          headerShown: false,
           tabBarIcon: ({ color, size }) => <Ionicons name="podium-outline" size={size} color={color} />,
         }}
       />

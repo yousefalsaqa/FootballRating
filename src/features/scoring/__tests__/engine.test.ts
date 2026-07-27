@@ -6,6 +6,7 @@ import {
   computeStatsByJournalist,
   currentStreak,
   rawAccuracy,
+  recentMovement,
   reliabilityScore,
   scoreImpact,
 } from '@/features/scoring/engine';
@@ -159,6 +160,19 @@ describe('tierForScore', () => {
   });
 });
 
+describe('recentMovement', () => {
+  test('zero when nothing resolved in the window', () => {
+    const old = [claim('true', { resolvedAt: NOW - 90 * DAY })];
+    expect(recentMovement(old, NOW)).toBe(0);
+  });
+
+  test('positive after a recent true, negative after a recent false', () => {
+    const base = [claim('true', { resolvedAt: NOW - 90 * DAY })];
+    expect(recentMovement([...base, claim('true', { resolvedAt: NOW - 2 * DAY })], NOW)).toBeGreaterThan(0);
+    expect(recentMovement([...base, claim('false', { resolvedAt: NOW - 2 * DAY })], NOW)).toBeLessThan(0);
+  });
+});
+
 describe('computeStats / computeStatsByJournalist', () => {
   test('assembles the full stat block', () => {
     const claims = [claim('true'), claim('true'), claim('partial')];
@@ -168,6 +182,8 @@ describe('computeStats / computeStatsByJournalist', () => {
     expect(stats.accuracy).toBeCloseTo(5 / 6);
     expect(stats.streak).toBe(2);
     expect(stats.score).toBeGreaterThan(50);
+    expect(stats.record).toEqual({ trueCount: 2, partialCount: 1, falseCount: 0 });
+    expect(stats.movement).toBeGreaterThan(0);
   });
 
   test('groups rows by journalist', () => {

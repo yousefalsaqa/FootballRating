@@ -30,4 +30,8 @@ export interface JournalistStats {
   accuracy: number | null;
   /** Consecutive 'true' outcomes, newest first; 'partial' skips, 'false' breaks. */
   streak: number;
+  /** Resolved record for table rows: e.g. 12–3–4. */
+  record: { trueCount: number; partialCount: number; falseCount: number };
+  /** Score points attributable to resolutions in the last 30 days (± movement). */
+  movement: number;
 }

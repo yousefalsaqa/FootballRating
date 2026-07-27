@@ -14,7 +14,7 @@ import {
   useSetJournalistArchived,
 } from '@/features/journalists/hooks';
 import { formatAccuracy, formatScore } from '@/lib/format';
-import { Button, Card, EmptyState, Screen, Skeleton, Text } from '@/ui/components';
+import { Button, Card, Divider, EmptyState, Screen, Skeleton, Text } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
 
 function StatCell({ label, value }: { label: string; value: string }) {
@@ -34,7 +34,7 @@ function StatCell({ label, value }: { label: string; value: string }) {
 export function JournalistDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { space } = useTheme();
+  const { space, gutter } = useTheme();
   const journalistQuery = useJournalist(id);
   const stats = useJournalistStats(id);
   const scorecard = useJournalistScorecard(id);
@@ -102,6 +102,11 @@ export function JournalistDetailScreen() {
           <Text variant="score">{formatScore(stats.score)}</Text>
           <TierBadge tier={stats.tier} size="lg" />
         </View>
+        {stats.resolvedCount > 0 ? (
+          <Text variant="secondary" color="inkSecondary" style={{ fontVariant: ['tabular-nums'] }}>
+            Record {stats.record.trueCount}–{stats.record.partialCount}–{stats.record.falseCount}
+          </Text>
+        ) : null}
         {stats.tier === null ? (
           <Text variant="secondary" color="inkTertiary">
             Resolve {3 - stats.resolvedCount} more claim{3 - stats.resolvedCount === 1 ? '' : 's'} to rank
@@ -123,8 +128,8 @@ export function JournalistDetailScreen() {
         </View>
       ) : null}
 
-      <View style={{ gap: space.md, marginTop: space.xl }}>
-        <Text variant="caption" color="inkTertiary">
+      <View style={{ gap: space.sm, marginTop: space.xl }}>
+        <Text variant="kicker" color="inkTertiary">
           Claim history
         </Text>
         {claims.length === 0 ? (
@@ -135,9 +140,14 @@ export function JournalistDetailScreen() {
             onAction={() => router.push('/claim/new')}
           />
         ) : (
-          claims.map((claim) => (
-            <ClaimRow key={claim.id} claim={claim} onPress={() => router.push(`/claim/${claim.id}`)} />
-          ))
+          <View style={{ marginHorizontal: -gutter }}>
+            {claims.map((claim, index) => (
+              <View key={claim.id}>
+                {index > 0 ? <Divider /> : null}
+                <ClaimRow claim={claim} onPress={() => router.push(`/claim/${claim.id}`)} />
+              </View>
+            ))}
+          </View>
         )}
       </View>
 

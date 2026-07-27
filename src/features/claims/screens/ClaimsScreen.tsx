@@ -8,7 +8,7 @@ import type { Claim } from '@/db/schema';
 import { ClaimRow } from '@/features/claims/components';
 import { useClaims, useResolveClaim } from '@/features/claims/hooks';
 import { useJournalists } from '@/features/journalists/hooks';
-import { Chip, EmptyState, Screen, SegmentedControl, Skeleton } from '@/ui/components';
+import { Chip, Divider, EmptyState, Screen, SegmentedControl, Skeleton } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
 
 /** Claims tab: pending/resolved lists across all journalists. */
@@ -43,8 +43,8 @@ export function ClaimsScreen() {
   };
 
   return (
-    <Screen scroll={false}>
-      <View style={{ paddingVertical: space.lg, gap: space.md }}>
+    <Screen scroll={false} edgeToEdge>
+      <View style={{ paddingVertical: space.md, paddingHorizontal: space.lg, gap: space.md }}>
         <SegmentedControl
           options={[
             { value: 'pending', label: 'Pending' },
@@ -76,9 +76,9 @@ export function ClaimsScreen() {
         ) : null}
       </View>
       {claimsQuery.isLoading ? (
-        <View style={{ gap: space.md }}>
-          <Skeleton height={120} />
-          <Skeleton height={120} />
+        <View style={{ gap: space.md, paddingHorizontal: space.lg }}>
+          <Skeleton height={96} />
+          <Skeleton height={96} />
         </View>
       ) : (claimsQuery.data ?? []).length === 0 ? (
         <EmptyState
@@ -95,8 +95,8 @@ export function ClaimsScreen() {
         <FlashList
           data={claimsQuery.data}
           keyExtractor={(claim) => claim.id}
-          contentContainerStyle={{ paddingBottom: insets.bottom + space.xl, paddingHorizontal: 0 }}
-          ItemSeparatorComponent={() => <View style={{ height: space.md }} />}
+          contentContainerStyle={{ paddingBottom: insets.bottom + space.xl }}
+          ItemSeparatorComponent={() => <Divider />}
           renderItem={({ item }) => (
             <ClaimRow
               claim={item}

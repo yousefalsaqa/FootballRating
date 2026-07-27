@@ -3,6 +3,10 @@ import type { TextStyle } from 'react-native';
 /**
  * Design tokens — the single source of truth for every visual value in the app.
  * Nothing outside `src/ui` should hard-code a color, size, or font.
+ *
+ * Direction: editorial football journalism. Warm newsprint paper, near-black
+ * ink, deep navy surfaces, one high-visibility lime accent used sparingly.
+ * Flat: hairlines and dense tables over cards; 6–8px radii (avatars excepted).
  */
 
 export const space = {
@@ -17,12 +21,12 @@ export const space = {
 } as const;
 
 /** Horizontal screen gutter. */
-export const gutter = 20;
+export const gutter = 16;
 
 export const radii = {
   sm: 6,
-  md: 10,
-  lg: 14,
+  md: 8,
+  lg: 8,
   full: 999,
 } as const;
 
@@ -31,100 +35,97 @@ export const fontFamily = {
   medium: 'Inter_500Medium',
   semibold: 'Inter_600SemiBold',
   bold: 'Inter_700Bold',
+  /** Display face — headlines, rank numbers, scores, stamps. */
+  condensed: 'BarlowCondensed_700Bold',
 } as const;
 
 export const type: Record<
-  'display' | 'title' | 'headline' | 'body' | 'secondary' | 'caption' | 'score',
+  | 'display'
+  | 'title'
+  | 'headline'
+  | 'body'
+  | 'secondary'
+  | 'caption'
+  | 'kicker'
+  | 'rank'
+  | 'score'
+  | 'stamp',
   TextStyle
 > = {
+  /** Editorial masthead headings. */
   display: {
-    fontFamily: fontFamily.bold,
-    fontSize: 34,
-    lineHeight: 40,
-    letterSpacing: -0.5,
+    fontFamily: fontFamily.condensed,
+    fontSize: 40,
+    lineHeight: 42,
+    letterSpacing: 0.2,
   },
   title: {
-    fontFamily: fontFamily.semibold,
-    fontSize: 24,
-    lineHeight: 30,
-    letterSpacing: -0.3,
+    fontFamily: fontFamily.condensed,
+    fontSize: 26,
+    lineHeight: 28,
+    letterSpacing: 0.2,
   },
   headline: {
     fontFamily: fontFamily.semibold,
-    fontSize: 17,
-    lineHeight: 22,
+    fontSize: 16,
+    lineHeight: 21,
     letterSpacing: -0.2,
   },
   body: {
     fontFamily: fontFamily.regular,
-    fontSize: 16,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 21,
     letterSpacing: 0,
   },
   secondary: {
     fontFamily: fontFamily.regular,
-    fontSize: 14,
-    lineHeight: 19,
+    fontSize: 13,
+    lineHeight: 18,
     letterSpacing: 0,
   },
   caption: {
     fontFamily: fontFamily.medium,
-    fontSize: 12,
-    lineHeight: 16,
-    letterSpacing: 0.6,
+    fontSize: 11,
+    lineHeight: 15,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
-  score: {
-    fontFamily: fontFamily.bold,
-    fontSize: 40,
-    lineHeight: 44,
-    letterSpacing: -0.5,
+  /** Condensed section labels — "THE RELIABILITY TABLE" kickers. */
+  kicker: {
+    fontFamily: fontFamily.condensed,
+    fontSize: 14,
+    lineHeight: 17,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  /** League-table rank numbers. */
+  rank: {
+    fontFamily: fontFamily.condensed,
+    fontSize: 26,
+    lineHeight: 30,
     fontVariant: ['tabular-nums'],
+  },
+  /** Reliability scores. */
+  score: {
+    fontFamily: fontFamily.condensed,
+    fontSize: 48,
+    lineHeight: 50,
+    fontVariant: ['tabular-nums'],
+  },
+  /** Verdict stamps: TRUE / PARTIAL / FALSE. */
+  stamp: {
+    fontFamily: fontFamily.condensed,
+    fontSize: 15,
+    lineHeight: 18,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
   },
 };
 
 export type TypeVariant = keyof typeof type;
 
-const lightColors: Colors = {
-  bg: '#FAFAF9',
-  surface: '#FFFFFF',
-  surfaceMuted: '#F2F1EE',
-  ink: '#111110',
-  inkSecondary: '#6F6E69',
-  inkTertiary: '#9C9A94',
-  hairline: '#E8E7E3',
-  /** Primary action: ink-on-bg inverted. */
-  actionBg: '#111110',
-  actionInk: '#FAFAF9',
-  success: '#2E7D4F',
-  successBg: '#E4F0E9',
-  partial: '#B7791F',
-  partialBg: '#F6ECDA',
-  danger: '#B3382C',
-  dangerBg: '#F6E3E1',
-  overlay: 'rgba(17, 17, 16, 0.4)',
-};
-
-const darkColors: Colors = {
-  bg: '#0E0E0D',
-  surface: '#1A1A18',
-  surfaceMuted: '#232320',
-  ink: '#F2F1EE',
-  inkSecondary: '#A3A29C',
-  inkTertiary: '#6F6E69',
-  hairline: '#26251F',
-  actionBg: '#F2F1EE',
-  actionInk: '#111110',
-  success: '#5FB884',
-  successBg: '#17301F',
-  partial: '#D9A653',
-  partialBg: '#332815',
-  danger: '#E07B6F',
-  dangerBg: '#361A16',
-  overlay: 'rgba(0, 0, 0, 0.55)',
-};
-
 export interface Colors {
+  /** Warm newsprint page background. */
   bg: string;
   surface: string;
   surfaceMuted: string;
@@ -132,7 +133,15 @@ export interface Colors {
   inkSecondary: string;
   inkTertiary: string;
   hairline: string;
-  /** Primary action: ink-on-bg inverted. */
+  /** Deep navy editorial surfaces (podium, tab bar, stat strips). */
+  navy: string;
+  navyInk: string;
+  navyInkSecondary: string;
+  navyHairline: string;
+  /** High-visibility lime — sparingly: the log-claim action + no.1 rank. */
+  accent: string;
+  accentInk: string;
+  /** Primary action: ink-on-paper inverted. */
   actionBg: string;
   actionInk: string;
   success: string;
@@ -144,33 +153,86 @@ export interface Colors {
   overlay: string;
 }
 
+const lightColors: Colors = {
+  bg: '#F3EEE2',
+  surface: '#FAF7ED',
+  surfaceMuted: '#E9E2CF',
+  ink: '#16130E',
+  inkSecondary: '#5C564A',
+  inkTertiary: '#8D8574',
+  hairline: '#D9D1BC',
+  navy: '#152A47',
+  navyInk: '#F3EEE2',
+  navyInkSecondary: '#8FA0BC',
+  navyHairline: '#274069',
+  accent: '#C6F224',
+  accentInk: '#141200',
+  actionBg: '#16130E',
+  actionInk: '#F3EEE2',
+  success: '#1E6B3E',
+  successBg: '#DEEBD8',
+  partial: '#A26400',
+  partialBg: '#F0E2C2',
+  danger: '#A8271D',
+  dangerBg: '#F0D8D1',
+  overlay: 'rgba(22, 19, 14, 0.45)',
+};
+
+const darkColors: Colors = {
+  bg: '#0B1424',
+  surface: '#13223A',
+  surfaceMuted: '#1B2C48',
+  ink: '#EFEAD9',
+  inkSecondary: '#A9A28E',
+  inkTertiary: '#777161',
+  hairline: '#243756',
+  navy: '#13223A',
+  navyInk: '#EFEAD9',
+  navyInkSecondary: '#8FA0BC',
+  navyHairline: '#2A3F63',
+  accent: '#C6F224',
+  accentInk: '#141200',
+  actionBg: '#EFEAD9',
+  actionInk: '#16130E',
+  success: '#6FBE8B',
+  successBg: '#12301E',
+  partial: '#D9A653',
+  partialBg: '#332815',
+  danger: '#DE7A6C',
+  dangerBg: '#361713',
+  overlay: 'rgba(0, 0, 0, 0.55)',
+};
+
 export const palettes = { light: lightColors, dark: darkColors } as const;
 
 export type ColorScheme = keyof typeof palettes;
 
-/** Muted tier tints — desaturated backgrounds with readable ink, per scheme. */
-export const tierColors: Record<ColorScheme, Record<'S' | 'A' | 'B' | 'C' | 'D', { bg: string; ink: string }>> = {
+/** Tier letter tints — muted editorial, readable on both papers. */
+export const tierColors: Record<
+  ColorScheme,
+  Record<'S' | 'A' | 'B' | 'C' | 'D', { bg: string; ink: string }>
+> = {
   light: {
-    S: { bg: '#E4EDF6', ink: '#2B5379' },
-    A: { bg: '#E4F0E9', ink: '#2E5F42' },
-    B: { bg: '#EFEDDE', ink: '#6B6224' },
-    C: { bg: '#F6ECDA', ink: '#8A5E1E' },
-    D: { bg: '#F6E3E1', ink: '#8C3A30' },
+    S: { bg: '#152A47', ink: '#C6F224' },
+    A: { bg: '#DEEBD8', ink: '#1E5B36' },
+    B: { bg: '#E7E4C9', ink: '#5F5A1E' },
+    C: { bg: '#F0E2C2', ink: '#7C5312' },
+    D: { bg: '#F0D8D1', ink: '#872A20' },
   },
   dark: {
-    S: { bg: '#16283A', ink: '#8FB8DC' },
-    A: { bg: '#17301F', ink: '#8CC7A3' },
+    S: { bg: '#1B2C48', ink: '#C6F224' },
+    A: { bg: '#12301E', ink: '#8CC7A3' },
     B: { bg: '#2E2B14', ink: '#C4B968' },
     C: { bg: '#332815', ink: '#D9A653' },
-    D: { bg: '#361A16', ink: '#DE8D82' },
+    D: { bg: '#361713', ink: '#DE8D82' },
   },
 };
 
 /** Single soft shadow, reserved for modals/sheets. Hairlines everywhere else. */
 export const modalShadow = {
   shadowColor: '#000',
-  shadowOffset: { width: 0, height: 8 },
-  shadowOpacity: 0.14,
-  shadowRadius: 24,
-  elevation: 12,
+  shadowOffset: { width: 0, height: 6 },
+  shadowOpacity: 0.18,
+  shadowRadius: 16,
+  elevation: 8,
 } as const;

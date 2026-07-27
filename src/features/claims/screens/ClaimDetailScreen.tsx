@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { Alert, View } from 'react-native';
 
 import type { ClaimOutcome } from '@/db/schema';
-import { CONFIDENCE_LABELS, OutcomePill } from '@/features/claims/components';
+import { CONFIDENCE_LABELS, VerdictStamp } from '@/features/claims/components';
 import {
   useClaim,
   useClaimTags,
@@ -91,7 +91,7 @@ export function ClaimDetailScreen() {
 
         {claim.outcome ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-            <OutcomePill outcome={claim.outcome} />
+            <VerdictStamp outcome={claim.outcome} size="lg" />
             {impact !== null ? (
               <Text variant="secondary" color="inkSecondary">
                 Score impact {formatDelta(impact)}

@@ -25,6 +25,15 @@ export function formatDelta(delta: number): string {
   return `${rounded > 0 ? '+' : '−'}${Math.abs(rounded).toFixed(1)}`;
 }
 
+/** Movement over the last 30 days: "▲ 2.4", "▼ 1.1", or "—". */
+export function formatMovement(movement: number): string {
+  const rounded = Math.round(movement * 10) / 10;
+  if (rounded === 0) {
+    return '—';
+  }
+  return `${rounded > 0 ? '▲' : '▼'} ${Math.abs(rounded).toFixed(1)}`;
+}
+
 /** Initials for avatar circles ("Fabrizio Romano" → "FR"). */
 export function initialsOf(name: string): string {
   return name

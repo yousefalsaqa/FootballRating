@@ -47,15 +47,11 @@ export function useRankedJournalists() {
     const { rows, asOf } = rowsQuery.data;
     const statsById = computeStatsByJournalist(rows, asOf);
     const empty = computeStats([], asOf);
-    // Ranked first (score bands keep tiers contiguous), unranked pinned last —
-    // otherwise unranked scores interleave and the tier grouping fragments.
+    // Pure score order — one continuous league table (tiers are labels, not
+    // sections, so unranked entries interleaving is intended here).
     return journalistsQuery.data
       .map((j) => ({ ...j, stats: statsById.get(j.id) ?? empty }))
-      .sort(
-        (a, b) =>
-          Number(a.stats.tier === null) - Number(b.stats.tier === null) ||
-          b.stats.score - a.stats.score,
-      );
+      .sort((a, b) => b.stats.score - a.stats.score);
   }, [journalistsQuery.data, rowsQuery.data]);
 
   return {
