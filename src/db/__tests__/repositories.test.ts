@@ -21,6 +21,7 @@ import { seedIfNeeded } from '@/db/seed';
 import {
   createClaim,
   deleteClaim,
+  deleteDuplicateClaims,
   getClaim,
   getClaimTags,
   listClaims,
@@ -167,6 +168,28 @@ describe('claims repository', () => {
     const rows = (await listScoringRows()).filter((r) => r.journalistId === j.id);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ outcome: 'partial', confidence: 2 });
+    await deleteJournalist(j.id);
+  });
+});
+
+describe('deleteDuplicateClaims', () => {
+  test('collapses same-story filings, preferring the resolved copy', async () => {
+    await deleteDuplicateClaims(); // baseline: sweep fixtures from earlier tests
+
+    const j = await createJournalist({ name: 'Dup Reporter' });
+    const first = await createClaim(claimInput(j.id, { headline: 'v1', transferWindow: '2026-summer' }));
+    const second = await createClaim(claimInput(j.id, { headline: 'v2', transferWindow: '2026-summer' }));
+    const third = await createClaim(claimInput(j.id, { headline: 'v3', transferWindow: '2026-summer' }));
+    await resolveClaim(second.id, 'true');
+    // Same player + destination in a DIFFERENT window is a separate story.
+    const otherWindow = await createClaim(claimInput(j.id, { transferWindow: '2027-winter' }));
+
+    const removed = await deleteDuplicateClaims();
+    expect(removed).toBe(2);
+    expect(await getClaim(second.id)).toBeDefined();
+    expect(await getClaim(first.id)).toBeUndefined();
+    expect(await getClaim(third.id)).toBeUndefined();
+    expect(await getClaim(otherWindow.id)).toBeDefined();
     await deleteJournalist(j.id);
   });
 });

@@ -74,8 +74,14 @@ function parseRssItems(xml: string): { title: string; link: string; pubDate: num
 
 /** Bing wraps article links in a redirect — unwrap to the real URL. */
 function unwrapBingLink(link: string): string {
+  // Bing sometimes double-encodes the query ampersands; an undecoded `&amp;`
+  // turns the param key into "amp;url" and the unwrap silently fails.
+  let candidate = link;
+  while (candidate.includes('&amp;')) {
+    candidate = candidate.replace(/&amp;/g, '&');
+  }
   try {
-    const parsed = new URL(link);
+    const parsed = new URL(candidate);
     if (parsed.hostname.endsWith('bing.com')) {
       const real = parsed.searchParams.get('url');
       if (real) {
@@ -85,16 +91,24 @@ function unwrapBingLink(link: string): string {
   } catch {
     // fall through with the original link
   }
-  return link;
+  return candidate;
 }
 
 function decodeXmlEntities(text: string): string {
   return text
+    .replace(/&#x([0-9a-f]+);/gi, (whole, hex: string) => {
+      const code = parseInt(hex, 16);
+      return code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+    })
+    .replace(/&#(\d+);/g, (whole, dec: string) => {
+      const code = Number(dec);
+      return code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+    })
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'");
+    .replace(/&apos;/g, "'");
 }
 
 async function sha1(text: string): Promise<string> {
@@ -280,23 +294,25 @@ interface ResolveRequestClaim {
   playerName: string;
   toClubName: string;
   fromClubName?: string | null;
+  claimedAt?: number;
 }
 
 const RESOLUTION_PROMPT = `You judge the outcomes of football transfer claims for a reliability tracker.
 
-Input: a JSON array of claims, each with {id, claim, evidence} where evidence is recent news headlines about that player/club.
+Input: a JSON array of claims, each with {id, claim, reportedDaysAgo, evidence} where evidence is news headlines about that player.
 
-For each claim decide the outcome STRICTLY from the evidence:
-- "true": the evidence clearly shows the reported move/agreement was completed (official, unveiled, medical done, deal announced).
-- "false": the evidence clearly shows it collapsed, was rejected and abandoned, or the player verifiably moved elsewhere / stayed put against the claim.
-- "partial": the essentials happened but materially different (different fee structure reported as decisive, loan instead of transfer, etc).
-- "unknown": evidence is insufficient, mixed, or the story is clearly still in progress. WHEN IN DOUBT, ANSWER "unknown" — a wrong verdict is far worse than no verdict.
+For each claim decide the outcome from the balance of the evidence:
+- "true": the evidence indicates the reported move/agreement happened — official announcement, "here we go", unveiled, medical, "signs"/"joins"/"completes", or coverage now treats the player as being at the claimed club.
+- "false": the evidence indicates it did not happen — the deal collapsed or was called off, the player joined a DIFFERENT club instead, or the story is weeks old and coverage clearly moved on to other destinations with no sign of the claimed move.
+- "partial": the essentials happened but materially different (loan instead of permanent, different terms, delayed to a later window).
+- "unknown": no meaningful evidence either way, or the story is clearly still live and developing right now.
+
+Prefer a definitive verdict when the evidence leans one way — this tracker depends on claims actually getting graded. Reserve "unknown" for genuinely open, still-developing stories or empty evidence.
 
 Reply with ONLY a JSON array: [{"id": string, "outcome": "true"|"partial"|"false"|"unknown"}].`;
 
 const MAX_RESOLVE_CLAIMS = 5;
-const RESOLVE_PARSED_BLOCKS = 15;
-const RESOLVE_EVIDENCE_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+const RESOLVE_EVIDENCE_TITLES = 18;
 
 /** Gathers headline evidence and asks the model to rule on pending claims. */
 async function resolveClaims(
@@ -305,26 +321,36 @@ async function resolveClaims(
 ): Promise<{ id: string; outcome: string }[]> {
   const batch = requested.slice(0, MAX_RESOLVE_CLAIMS);
   const now = Date.now();
-  const payload: { id: string; claim: string; evidence: string[] }[] = [];
+  const payload: { id: string; claim: string; reportedDaysAgo: number | null; evidence: string[] }[] = [];
   for (const claim of batch) {
-    let evidence: string[] = [];
-    try {
-      const query = `${claim.playerName} ${claim.toClubName}`;
-      const response = await fetch(
-        `https://www.bing.com/news/search?q=${encodeURIComponent(query)}&format=rss`,
-        { headers: FEED_HEADERS },
-      );
-      if (response.ok) {
-        const xml = await response.text();
-        evidence = parseRssItems(xml)
-          .slice(0, RESOLVE_PARSED_BLOCKS)
-          .filter((i) => now - i.pubDate < RESOLVE_EVIDENCE_AGE_MS)
-          .map((i) => i.title);
+    // Two angles: the claimed destination, and the player alone — the latter
+    // surfaces where they ACTUALLY ended up, which is what "false" needs.
+    const queries = [`"${claim.playerName}" ${claim.toClubName}`, `"${claim.playerName}" transfer`];
+    const evidence: string[] = [];
+    for (const query of queries) {
+      try {
+        const response = await fetch(
+          `https://www.bing.com/news/search?q=${encodeURIComponent(query)}&format=rss`,
+          { headers: FEED_HEADERS },
+        );
+        if (response.ok) {
+          const xml = await response.text();
+          for (const item of parseRssItems(xml)) {
+            if (!evidence.includes(item.title)) {
+              evidence.push(item.title);
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Evidence fetch failed for ${claim.playerName}`, error);
       }
-    } catch (error) {
-      console.error(`Evidence fetch failed for ${claim.playerName}`, error);
     }
-    payload.push({ id: claim.id, claim: claim.headline, evidence });
+    payload.push({
+      id: claim.id,
+      claim: claim.headline,
+      reportedDaysAgo: claim.claimedAt ? Math.round((now - claim.claimedAt) / 86_400_000) : null,
+      evidence: evidence.slice(0, RESOLVE_EVIDENCE_TITLES),
+    });
   }
   let text: string;
   try {
@@ -343,6 +369,103 @@ async function resolveClaims(
     console.error('Unparseable resolution output', text.slice(0, 200));
     return [];
   }
+}
+
+const AUTHOR_CACHE_TTL_SECONDS = 30 * 24 * 60 * 60;
+
+interface PostLookup {
+  username: string | null;
+  name: string | null;
+  postedAt: number | null;
+  /** Structured claim extracted from the post caption, when it reports one. */
+  claim: Omit<ClaimDraft, 'id' | 'journalistId'> | null;
+}
+
+const EMPTY_LOOKUP: PostLookup = { username: null, name: null, postedAt: null, claim: null };
+
+/**
+ * Reads a pasted Instagram post/reel link — post URLs don't name their
+ * author, so the app can't match them to a journalist on its own. The
+ * crawler-facing og: meta tags carry author, date AND caption; the caption is
+ * run through the same claim extractor as the news wire so a "here we go"
+ * post comes back as a fileable claim.
+ */
+async function lookupInstagramPost(env: Env, postUrl: string): Promise<PostLookup> {
+  const match = postUrl.match(/instagram\.com\/(?:[^/?#]+\/)?(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/i);
+  if (!match) {
+    return EMPTY_LOOKUP;
+  }
+  const shortcode = match[1];
+  const cacheKey = `author2:${shortcode}`;
+  const cached = await env.INGEST_KV.get(cacheKey);
+  if (cached) {
+    return JSON.parse(cached) as PostLookup;
+  }
+  let username: string | null = null;
+  let name: string | null = null;
+  let caption: string | null = null;
+  let postedAt: number | null = null;
+  try {
+    const response = await fetch(`https://www.instagram.com/p/${shortcode}/`, {
+      headers: { 'user-agent': 'facebookexternalhit/1.1' },
+    });
+    if (response.ok) {
+      const html = await response.text();
+      // og:description: '3M likes, 33K comments - fabriziorom on July 26, 2026: "caption…"'
+      // Captions often use ᴜɴɪᴄᴏᴅᴇ display letters — NFKC folds them to ASCII.
+      const description = decodeXmlEntities(
+        html.match(/property="og:description" content="([^"]*)"/)?.[1] ?? '',
+      ).normalize('NFKC');
+      username = description.match(/ - ([A-Za-z0-9_.]+) on [A-Z]/)?.[1] ?? null;
+      const dateRaw = description.match(/ on ([A-Z][a-z]+ \d{1,2}, \d{4})/)?.[1];
+      postedAt = dateRaw ? Date.parse(dateRaw) || null : null;
+      caption = description.match(/\d{4}: "([\s\S]+)/)?.[1]?.replace(/"$/, '').trim() ?? null;
+      const title = html.match(/property="og:title" content="([^"]+?) on Instagram/)?.[1];
+      name = title ? decodeXmlEntities(title).normalize('NFKC') : null;
+    }
+  } catch (error) {
+    console.error('IG page fetch failed', error);
+  }
+  if (!username) {
+    // The public embed page names the author even when og: tags are withheld.
+    try {
+      const response = await fetch(`https://www.instagram.com/p/${shortcode}/embed/`, {
+        headers: FEED_HEADERS,
+      });
+      if (response.ok) {
+        const html = await response.text();
+        username =
+          html.match(/class="UsernameText"[^>]*>([A-Za-z0-9_.]+)</)?.[1] ??
+          html.match(/"username"\s*:\s*"([A-Za-z0-9_.]+)"/)?.[1] ??
+          null;
+      }
+    } catch (error) {
+      console.error('IG embed fetch failed', error);
+    }
+  }
+  let claim: PostLookup['claim'] = null;
+  if (caption && (name ?? username)) {
+    const drafts = await extractClaims(env, [
+      {
+        journalistId: 'post-lookup',
+        journalistName: name ?? (username as string),
+        title: caption.slice(0, 400),
+        link: postUrl,
+        pubDate: postedAt ?? Date.now(),
+      },
+    ]);
+    if (drafts[0]) {
+      const { id: _id, journalistId: _journalistId, ...rest } = drafts[0];
+      claim = rest;
+    }
+  }
+  const result: PostLookup = { username: username?.toLowerCase() ?? null, name, postedAt, claim };
+  if (result.username || result.name) {
+    await env.INGEST_KV.put(cacheKey, JSON.stringify(result), {
+      expirationTtl: AUTHOR_CACHE_TTL_SECONDS,
+    });
+  }
+  return result;
 }
 
 async function runIngest(env: Env): Promise<void> {
@@ -392,6 +515,12 @@ export default {
       }
       const verdicts = await resolveClaims(env, body.claims ?? []);
       return new Response(JSON.stringify({ verdicts }), { headers: CORS_HEADERS });
+    }
+    // Author + claim lookup for pasted Instagram post links.
+    if (url.pathname === '/author') {
+      const postUrl = url.searchParams.get('url') ?? '';
+      const lookup = await lookupInstagramPost(env, postUrl);
+      return new Response(JSON.stringify(lookup), { headers: CORS_HEADERS });
     }
     if (url.pathname === '/claims') {
       return new Response(JSON.stringify({ claims: await listDrafts(env) }), {

@@ -70,8 +70,14 @@ export function isSocialUrl(text: string): boolean {
 
 /** Unwraps Bing News redirect links to the real article URL. */
 export function normalizeSourceUrl(link: string): string {
+  // Bing entity-encodes (sometimes doubly) the query ampersands; undecoded
+  // `&amp;` turns the param key into "amp;url" and the unwrap silently fails.
+  let candidate = link.trim();
+  while (candidate.includes('&amp;')) {
+    candidate = candidate.replace(/&amp;/g, '&');
+  }
   try {
-    const parsed = new URL(link);
+    const parsed = new URL(candidate);
     if (parsed.hostname.endsWith('bing.com')) {
       const real = parsed.searchParams.get('url');
       if (real) {
@@ -81,7 +87,44 @@ export function normalizeSourceUrl(link: string): string {
   } catch {
     // keep original
   }
-  return link;
+  return candidate;
+}
+
+/**
+ * Matches an Instagram post/reel URL — these omit the author, so the app asks
+ * the ingest worker to read the post's author (see worker `/author`).
+ */
+export function isInstagramPostUrl(text: string): boolean {
+  return /instagram\.com\/(?:[^/?#]+\/)?(?:p|reel|reels|tv)\/[A-Za-z0-9_-]+/i.test(text.trim());
+}
+
+/**
+ * Whether a social username belongs to a journalist. Reporters often vary
+ * their handle per platform (X @fabrizioromano vs IG @fabriziorom), so beyond
+ * an exact handle match we accept a long-enough prefix relationship with the
+ * stored handle or the collapsed real name.
+ */
+export function usernameMatchesJournalist(
+  username: string,
+  name: string,
+  handle: string | null | undefined,
+): boolean {
+  const candidate = username.trim().replace(/^@/, '').toLowerCase().replace(/[._]/g, '');
+  if (!candidate) {
+    return false;
+  }
+  const collapsedName = name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+  const collapsedHandle = (handle ?? '').toLowerCase().replace(/[._]/g, '');
+  if (candidate === collapsedHandle || candidate === collapsedName) {
+    return true;
+  }
+  const prefixOf = (a: string, b: string) =>
+    a.length >= 6 && b.length >= 6 && (a.startsWith(b) || b.startsWith(a));
+  return prefixOf(candidate, collapsedHandle) || prefixOf(candidate, collapsedName);
 }
 
 /** Normalizes user-entered handles: strips @, spaces, lowercases. */

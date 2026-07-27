@@ -44,6 +44,7 @@ export interface ResolutionRequest {
   playerName: string;
   toClubName: string;
   fromClubName?: string | null;
+  claimedAt?: number;
 }
 
 /** Asks the worker to judge pending claims from recent coverage (max 5). */
@@ -64,6 +65,32 @@ export async function requestResolutions(
     throw new Error(`Resolve request failed: ${response.status}`);
   }
   return verdictSchema.parse(await response.json()).verdicts;
+}
+
+const authorSchema = z.object({
+  username: z.string().nullable(),
+  name: z.string().nullable(),
+  postedAt: z.number().nullable(),
+  /** Filled when the post's caption itself reports a transfer claim. */
+  claim: incomingClaimSchema.omit({ id: true, journalistId: true }).nullable(),
+});
+
+export type PostAuthor = z.infer<typeof authorSchema>;
+
+/** Asks the worker who authored a pasted Instagram post/reel link. */
+export async function fetchPostAuthor(postUrl: string): Promise<PostAuthor> {
+  const base = ingestUrl();
+  if (!base) {
+    return { username: null, name: null, postedAt: null, claim: null };
+  }
+  const response = await fetch(
+    `${base.replace(/\/$/, '')}/author?url=${encodeURIComponent(postUrl)}`,
+    { signal: AbortSignal.timeout(20_000) },
+  );
+  if (!response.ok) {
+    throw new Error(`Author lookup failed: ${response.status}`);
+  }
+  return authorSchema.parse(await response.json());
 }
 
 export async function fetchIncomingClaims(): Promise<IncomingClaim[]> {

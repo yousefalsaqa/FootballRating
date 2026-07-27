@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
 
 import type { ClaimOutcome } from '@/db/schema';
 import {
   createClaim,
   deleteClaim,
+  deleteDuplicateClaims,
   getClaim,
   getClaimTags,
   listClaimCountsByJournalist,
@@ -17,6 +19,8 @@ import {
   type ScoringRow,
 } from '@/features/claims/repository';
 import { queryKeys } from '@/lib/query-client';
+
+export { claimStoryKey } from '@/features/claims/repository';
 
 export function useClaims(filter?: ClaimFilter) {
   return useQuery({
@@ -77,6 +81,29 @@ function useInvalidateClaims() {
     void client.invalidateQueries({ queryKey: queryKeys.scores.all });
     void client.invalidateQueries({ queryKey: queryKeys.tags.all });
   };
+}
+
+/**
+ * One-shot startup sweep that collapses duplicate filings of the same story
+ * (auto-file could re-file drafts when its seen-list reset between sessions).
+ */
+export function useDedupeClaims(): void {
+  const invalidate = useInvalidateClaims();
+  const ran = useRef(false);
+  useEffect(() => {
+    if (ran.current) {
+      return;
+    }
+    ran.current = true;
+    deleteDuplicateClaims()
+      .then((removed) => {
+        if (removed > 0) {
+          invalidate();
+        }
+      })
+      .catch((e: unknown) => console.error('Claim dedupe failed', e));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
+  }, []);
 }
 
 export function useCreateClaim() {

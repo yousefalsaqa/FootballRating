@@ -1,13 +1,19 @@
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useAcceptIncoming, useInboxEnabled, usePostLookup } from '@/features/inbox/hooks';
 import { TierBadge } from '@/features/journalists/components/TierBadge';
 import { useRankedJournalists, type RankedJournalist } from '@/features/journalists/hooks';
 import { formatDate, formatMovement, formatScore } from '@/lib/format';
-import { extractHandleFromUrl, isSocialUrl } from '@/lib/links';
+import {
+  extractHandleFromUrl,
+  isInstagramPostUrl,
+  isSocialUrl,
+  usernameMatchesJournalist,
+} from '@/lib/links';
 import { Divider, EmptyState, Screen, SearchInput, Skeleton, Text } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
 
@@ -175,6 +181,33 @@ function TableRow({ row, onPress }: { row: RankedRow; onPress: () => void }) {
   );
 }
 
+/** A reporter identified from a pasted link, shown under the search box. */
+function ReporterHit({ journalist, onPress }: { journalist: RankedJournalist; onPress: () => void }) {
+  const { space } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={{
+        paddingVertical: space.md,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}
+    >
+      <View>
+        <Text variant="headline">{journalist.name}</Text>
+        <Text variant="caption" color="inkTertiary">
+          @{journalist.handle} · open dossier
+        </Text>
+      </View>
+      <Text variant="score" style={{ fontSize: 28, lineHeight: 30 }}>
+        {formatScore(journalist.stats.score)}
+      </Text>
+    </Pressable>
+  );
+}
+
 /** The front page of THE TRANSFER LEDGER. */
 export function LeaderboardScreen() {
   const router = useRouter();
@@ -189,8 +222,40 @@ export function LeaderboardScreen() {
   const handleMatch = pastedHandle
     ? (data ?? []).find((j) => j.handle === pastedHandle)
     : undefined;
-  /** A social link we can't read the author from (e.g. instagram.com/p/…). */
-  const unreadableSocialLink = !pastedHandle && isSocialUrl(search);
+
+  // Instagram post/reel links omit the author — the ingest worker reads the
+  // post and hands back the author plus any transfer claim in the caption.
+  const inboxEnabled = useInboxEnabled();
+  const igPostUrl = inboxEnabled && isInstagramPostUrl(search) ? search.trim() : null;
+  const postLookup = usePostLookup(igPostUrl);
+  const author = igPostUrl ? postLookup.data : undefined;
+  const postMatch = useMemo(() => {
+    if (!author) {
+      return undefined;
+    }
+    return (data ?? []).find(
+      (j) =>
+        (author.username ? usernameMatchesJournalist(author.username, j.name, j.handle) : false) ||
+        (author.name ? j.name.trim().toLowerCase() === author.name.trim().toLowerCase() : false),
+    );
+  }, [author, data]);
+  const acceptIncoming = useAcceptIncoming();
+  const postClaim = author?.claim ?? null;
+
+  // "Paste it and it takes me there": jump straight to the dossier the moment
+  // a pasted link identifies a tracked reporter. Posts that carry a fileable
+  // claim stay on the result card so the claim isn't hidden by the jump.
+  const navigatedFor = useRef<string | null>(null);
+  const autoTarget = handleMatch ?? (postMatch && !author?.claim ? postMatch : undefined);
+  useEffect(() => {
+    if (autoTarget && navigatedFor.current !== search) {
+      navigatedFor.current = search;
+      router.push(`/journalist/${autoTarget.id}`);
+    }
+  }, [autoTarget, search, router]);
+
+  /** A social link we can't read the author from (e.g. a Snapchat story). */
+  const unreadableSocialLink = !pastedHandle && !igPostUrl && isSocialUrl(search);
 
   const allRows = useMemo<RankedRow[]>(
     () => (data ?? []).map((journalist, index) => ({ journalist, rank: index + 1 })),
@@ -307,28 +372,102 @@ export function LeaderboardScreen() {
           {unreadableSocialLink ? (
             <View style={{ paddingVertical: space.md }}>
               <Text variant="secondary" color="inkSecondary">
-                Post links don’t name their author. Paste the reporter’s profile link instead —
-                e.g. instagram.com/fabrizioromano or x.com/FabrizioRomano.
+                Couldn’t read the author from that link. Paste the reporter’s profile link or an
+                Instagram post link — e.g. x.com/FabrizioRomano or instagram.com/p/…
               </Text>
             </View>
           ) : null}
+          {igPostUrl ? (
+            postLookup.isFetching ? (
+              <View style={{ paddingVertical: space.md }}>
+                <Text variant="secondary" color="inkSecondary">
+                  Reading the Instagram post…
+                </Text>
+              </View>
+            ) : postLookup.isError || (author && !author.username && !author.name) ? (
+              <View style={{ paddingVertical: space.md }}>
+                <Text variant="secondary" color="inkSecondary">
+                  Couldn’t read that post. Paste the reporter’s profile link instead — e.g.
+                  instagram.com/fabriziorom.
+                </Text>
+              </View>
+            ) : author ? (
+              <View style={{ paddingVertical: space.xs }}>
+                {postMatch ? (
+                  <ReporterHit
+                    journalist={postMatch}
+                    onPress={() => router.push(`/journalist/${postMatch.id}`)}
+                  />
+                ) : (
+                  <View style={{ paddingVertical: space.md, gap: space.xs }}>
+                    <Text variant="secondary" color="inkSecondary">
+                      Post by {author.name ?? `@${author.username}`} — not in the record yet.
+                    </Text>
+                    <Text
+                      variant="caption"
+                      color="ink"
+                      onPress={() => router.push('/journalist/new')}
+                      accessibilityRole="button"
+                      style={{ textDecorationLine: 'underline' }}
+                    >
+                      Add them →
+                    </Text>
+                  </View>
+                )}
+                {postClaim && postMatch ? (
+                  <View
+                    style={{
+                      borderTopWidth: rules.thin,
+                      borderTopColor: colors.hairline,
+                      paddingVertical: space.md,
+                      gap: space.xs,
+                    }}
+                  >
+                    <Text variant="kicker" color="danger">
+                      This post reports
+                    </Text>
+                    <Text variant="headline">{postClaim.headline}</Text>
+                    <Text variant="caption" color="inkSecondary">
+                      {postClaim.playerName}
+                      {postClaim.fromClubName ? ` · ${postClaim.fromClubName}` : ''} →{' '}
+                      {postClaim.toClubName}
+                    </Text>
+                    <Text
+                      variant="stamp"
+                      color="ink"
+                      accessibilityRole="button"
+                      onPress={() =>
+                        acceptIncoming(
+                          {
+                            id: `post:${igPostUrl}`,
+                            journalistId: postMatch.id,
+                            ...postClaim,
+                          },
+                          (claim) => router.push(`/claim/${claim.id}`),
+                        )
+                      }
+                      style={{
+                        alignSelf: 'flex-start',
+                        borderWidth: rules.medium,
+                        borderColor: colors.ink,
+                        paddingHorizontal: space.sm,
+                        paddingVertical: 4,
+                        marginTop: space.xs,
+                      }}
+                    >
+                      File this claim
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null
+          ) : null}
           {pastedHandle ? (
             handleMatch ? (
-              <Pressable
-                accessibilityRole="button"
+              <ReporterHit
+                journalist={handleMatch}
                 onPress={() => router.push(`/journalist/${handleMatch.id}`)}
-                style={{ paddingVertical: space.md, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
-              >
-                <View>
-                  <Text variant="headline">{handleMatch.name}</Text>
-                  <Text variant="caption" color="inkTertiary">
-                    @{handleMatch.handle} · open dossier
-                  </Text>
-                </View>
-                <Text variant="score" style={{ fontSize: 28, lineHeight: 30 }}>
-                  {formatScore(handleMatch.stats.score)}
-                </Text>
-              </Pressable>
+              />
             ) : (
               <View style={{ paddingVertical: space.md, gap: space.xs }}>
                 <Text variant="secondary" color="inkSecondary">

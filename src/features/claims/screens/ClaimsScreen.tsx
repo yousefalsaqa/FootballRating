@@ -8,7 +8,12 @@ import type { Claim } from '@/db/schema';
 import { ClaimRow } from '@/features/claims/components';
 import { useClaims, useResolveClaim } from '@/features/claims/hooks';
 import { IncomingRow } from '@/features/inbox/components';
-import { useAcceptIncoming, useInboxEnabled, useIncomingClaims } from '@/features/inbox/hooks';
+import {
+  useAcceptIncoming,
+  useInboxEnabled,
+  useIncomingClaims,
+  useResolveAllPending,
+} from '@/features/inbox/hooks';
 import { useSettingsStore } from '@/features/settings/store';
 import { useJournalists } from '@/features/journalists/hooks';
 import { Chip, Divider, EmptyState, Screen, SegmentedControl, Skeleton, Text } from '@/ui/components';
@@ -17,7 +22,7 @@ import { useTheme } from '@/ui/theme';
 /** Claims tab: pending/resolved lists across all journalists. */
 export function ClaimsScreen() {
   const router = useRouter();
-  const { space } = useTheme();
+  const { colors, rules, space } = useTheme();
   const insets = useSafeAreaInsets();
   const inboxEnabled = useInboxEnabled();
   const [section, setSection] = useState<'incoming' | 'pending' | 'resolved'>('pending');
@@ -29,6 +34,7 @@ export function ClaimsScreen() {
   const inbox = useIncomingClaims();
   const acceptIncoming = useAcceptIncoming();
   const autoFile = useSettingsStore((s) => s.autoFileIncoming);
+  const resolveAll = useResolveAllPending();
 
   const journalistNames = useMemo(() => {
     const map = new Map<string, string>();
@@ -81,6 +87,34 @@ export function ClaimsScreen() {
           value={section}
           onChange={setSection}
         />
+        {section === 'pending' && resolveAll.enabled && resolveAll.pendingCount > 0 ? (
+          <View style={{ gap: 4 }}>
+            <Text
+              variant="stamp"
+              color="ink"
+              accessibilityRole="button"
+              onPress={() => void resolveAll.run()}
+              disabled={resolveAll.running}
+              style={{
+                alignSelf: 'flex-start',
+                borderWidth: rules.medium,
+                borderColor: colors.ink,
+                paddingHorizontal: space.sm,
+                paddingVertical: 4,
+                opacity: resolveAll.running ? 0.5 : 1,
+              }}
+            >
+              {resolveAll.running
+                ? 'Checking press coverage…'
+                : `Check outcomes now (${resolveAll.pendingCount})`}
+            </Text>
+            {resolveAll.summary ? (
+              <Text variant="caption" color="inkSecondary">
+                {resolveAll.summary}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
         {section !== 'incoming' && (journalistsQuery.data?.length ?? 0) > 1 ? (
           <ScrollView
             horizontal

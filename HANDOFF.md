@@ -1,6 +1,14 @@
 # Session Handoff
 
-_Last updated: 2026-07-27 (second session)_
+_Last updated: 2026-07-27 (third session)_
+
+## Third-session changes (all verified live)
+
+- **Broken source links root-caused**: Bing entity-encodes (sometimes doubly) the `&`s in its redirect URLs; one decode pass left `&amp;`, making `searchParams.get('url')` see the key as `amp;url` → unwrap silently failed. Fixed in both `lib/links.ts normalizeSourceUrl` (loops `&amp;`→`&` before parsing — also repairs claims already stored with broken URLs, since ClaimDetail normalizes at press time) and worker `unwrapBingLink`. The deployed worker had also been running stale code — redeployed.
+- **Duplicate claims fixed** (user's phone had many): auto-file's dedupe relied only on the persisted dismissed-ids store; if that resets, every wire draft re-files. Now the claims DB is the dedupe authority: `claimStoryKey` (journalist+player+destination+window) in claims/repository; `useIncomingClaims` filters drafts against filed stories (auto-file gated on that filter being loaded); `useDedupeClaims` (mounted in tabs layout) sweeps existing duplicates once per session, preferring resolved copies. Phone-vs-laptop content differing is expected — local-first, no sync.
+- **IG post paste**: worker `GET /author?url=<ig post>` reads the post via crawler-UA og: tags (fallback: /embed/ page), returns `{username, name, postedAt, claim}` — caption is run through the same AI extractor, so a "here we go" post comes back as a fileable claim (cached 30d in KV as `author2:<shortcode>`). App: paste an IG post/reel link into front-page search → `usePostLookup` → fuzzy author match (`usernameMatchesJournalist` — IG @fabriziorom ≠ X @fabrizioromano, so prefix/name matching) → auto-jumps to the dossier, or shows a claim card with "File this claim" when the caption reports one. Pasted X/profile links also auto-navigate now.
+- **Resolution loosened** (was: everything "unknown"): /resolve evidence now queries both `"player" club` AND `"player" transfer` (finds where the player actually went, enabling "false"), no evidence-age filter, up to 18 titles; prompt asks for a definitive verdict when evidence leans one way, and gets `reportedDaysAgo`. Client gates: min age 24h→3h, recheck 12h→6h. New **"Check outcomes now" button** (Reports → Pending) sweeps ALL pending claims in batches of 5, ignoring gates, with a summary line. Verified live: Tonali→true, stale Barcola-to-Spurs→false, day-old developing stories→unknown.
+- Search on the front page verified working headlessly (name filter, IG paste, file-claim, outcomes button) via puppeteer-core + system Edge against the exported dist (serve with the `/FootballRating` baseUrl prefix stripped).
 
 ## What this is now
 

@@ -1,12 +1,14 @@
 import { Tabs } from 'expo-router';
 
+import { useDedupeClaims } from '@/features/claims/hooks';
 import { useAutoFileIncoming, useAutoResolve } from '@/features/inbox/hooks';
 import { useTheme } from '@/ui/theme';
 
 export default function TabsLayout() {
   const { colors, rules, type } = useTheme();
-  // Files fresh wire reports and records conclusive outcomes automatically
-  // (both toggleable in Desk).
+  // Collapses any duplicate filings first, then files fresh wire reports and
+  // records conclusive outcomes automatically (both toggleable in Desk).
+  useDedupeClaims();
   useAutoFileIncoming();
   useAutoResolve();
   return (

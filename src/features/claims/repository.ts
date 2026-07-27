@@ -44,6 +44,50 @@ export async function getClaimTags(claimId: string): Promise<Tag[]> {
     .where(eq(claimTags.claimId, claimId));
 }
 
+/**
+ * Canonical story identity — one journalist reporting one player to one
+ * destination within one window is ONE claim, however many articles cover it.
+ */
+export function claimStoryKey(
+  claim: Pick<Claim, 'journalistId' | 'playerName' | 'toClubName' | 'transferWindow'>,
+): string {
+  return [
+    claim.journalistId,
+    claim.playerName.trim().toLowerCase(),
+    claim.toClubName.trim().toLowerCase(),
+    claim.transferWindow,
+  ].join('|');
+}
+
+/**
+ * Deletes duplicate filings of the same story (see claimStoryKey), keeping a
+ * resolved copy when one exists, else the earliest filing. Duplicates crept
+ * in when auto-file's seen-list reset between sessions; the claims table
+ * itself is now the dedupe authority.
+ */
+export async function deleteDuplicateClaims(): Promise<number> {
+  const all = await db.select().from(claims).orderBy(claims.createdAt);
+  const keep = new Map<string, Claim>();
+  const doomed: string[] = [];
+  for (const claim of all) {
+    const key = claimStoryKey(claim);
+    const kept = keep.get(key);
+    if (!kept) {
+      keep.set(key, claim);
+    } else if (kept.status === 'pending' && claim.status === 'resolved') {
+      doomed.push(kept.id);
+      keep.set(key, claim);
+    } else {
+      doomed.push(claim.id);
+    }
+  }
+  if (doomed.length) {
+    await db.delete(claimTags).where(inArray(claimTags.claimId, doomed));
+    await db.delete(claims).where(inArray(claims.id, doomed));
+  }
+  return doomed.length;
+}
+
 export type CreateClaimInput = Omit<
   NewClaim,
   'id' | 'status' | 'outcome' | 'resolvedAt' | 'createdAt'
