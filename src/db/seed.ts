@@ -21,13 +21,20 @@ const SEED_JOURNALISTS: { id: string; name: string; outlet: string; handle: stri
   { id: 'seed-ben-jacobs', name: 'Ben Jacobs', outlet: 'talkSPORT', handle: 'jacobsben' },
 ];
 
+/**
+ * True when the app_meta flag row exists. Uses select().limit(1) rather than
+ * db.query.findFirst — the sql-js driver returns a truthy husk object for
+ * findFirst on an empty table, which silently skipped seeding on web.
+ */
+async function hasFlag(key: string): Promise<boolean> {
+  const rows = await db.select().from(appMeta).where(eq(appMeta.key, key)).limit(1);
+  return rows.length > 0;
+}
+
 /** Inserts well-known journalists on first launch. Idempotent via app_meta flags. */
 export async function seedIfNeeded(): Promise<void> {
   const now = Date.now();
-  const flag = await db.query.appMeta.findFirst({
-    where: (meta, { eq: equals }) => equals(meta.key, SEED_FLAG),
-  });
-  if (!flag) {
+  if (!(await hasFlag(SEED_FLAG))) {
     await db.insert(journalists).values(
       SEED_JOURNALISTS.map((j) => ({
         ...j,
@@ -43,10 +50,7 @@ export async function seedIfNeeded(): Promise<void> {
 
 /** Databases seeded before the handle column existed get handles by name. */
 async function backfillHandlesIfNeeded(now: number): Promise<void> {
-  const flag = await db.query.appMeta.findFirst({
-    where: (meta, { eq: equals }) => equals(meta.key, HANDLE_BACKFILL_FLAG),
-  });
-  if (flag) {
+  if (await hasFlag(HANDLE_BACKFILL_FLAG)) {
     return;
   }
   for (const seed of SEED_JOURNALISTS) {
