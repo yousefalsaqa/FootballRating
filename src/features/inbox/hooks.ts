@@ -44,7 +44,8 @@ export function useIncomingClaims() {
   const enabled = useInboxEnabled() && editor;
   const dismissedIds = useInboxStore((s) => s.dismissedIds);
   const dismiss = useInboxStore((s) => s.dismiss);
-  const existingQuery = useClaims();
+  // Tombstones included: a deleted story must not re-file from the wire.
+  const existingQuery = useClaims({ includeDeleted: true });
 
   const query = useQuery({
     queryKey: queryKeys.inbox.all,

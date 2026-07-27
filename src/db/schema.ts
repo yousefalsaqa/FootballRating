@@ -61,6 +61,12 @@ export const claims = sqliteTable(
      * older verdict resurrect it.
      */
     reopenedAt: integer('reopened_at'),
+    /**
+     * Soft-delete tombstone. Deleted claims stay in the table (hidden from
+     * every list) so the deletion propagates through the ledger instead of
+     * the other device pushing the claim back.
+     */
+    deletedAt: integer('deleted_at'),
     createdAt: integer('created_at').notNull(),
   },
   (table) => [

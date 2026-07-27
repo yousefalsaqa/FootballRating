@@ -1,0 +1,1 @@
+ALTER TABLE `claims` ADD `deleted_at` integer;

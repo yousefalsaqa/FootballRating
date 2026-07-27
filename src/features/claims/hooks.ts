@@ -26,7 +26,12 @@ export { claimStoryKey, deleteDuplicateClaims } from '@/features/claims/reposito
 
 export function useClaims(filter?: ClaimFilter) {
   return useQuery({
-    queryKey: [...queryKeys.claims.all, filter?.status ?? 'any', filter?.journalistId ?? 'any'],
+    queryKey: [
+      ...queryKeys.claims.all,
+      filter?.status ?? 'any',
+      filter?.journalistId ?? 'any',
+      filter?.includeDeleted ? 'with-deleted' : 'live',
+    ],
     queryFn: () => listClaims(filter),
   });
 }

@@ -44,6 +44,7 @@ const claimSnapshot = z.object({
   resolutionNote: z.string().nullable().optional().default(null),
   resolutionSourceUrl: z.string().nullable().optional().default(null),
   reopenedAt: z.number().nullable().optional().default(null),
+  deletedAt: z.number().nullable().optional().default(null),
   createdAt: z.number(),
 });
 
@@ -114,6 +115,7 @@ export async function importSnapshot(snapshot: ExportSnapshot): Promise<ImportRe
       status: claims.status,
       resolvedAt: claims.resolvedAt,
       reopenedAt: claims.reopenedAt,
+      deletedAt: claims.deletedAt,
     })
     .from(claims);
   const existingClaims = new Set(localClaimRows.map((r) => r.id));
@@ -125,10 +127,14 @@ export async function importSnapshot(snapshot: ExportSnapshot): Promise<ImportRe
   }
 
   // Editorial state propagates between same-id copies: whichever side acted
-  // LAST wins — a newer verdict overwrites, and a newer reopen un-resolves
-  // (the editor's overrule must never be resurrected by an old verdict).
-  const actionAt = (row: { resolvedAt: number | null; reopenedAt: number | null }) =>
-    Math.max(row.resolvedAt ?? 0, row.reopenedAt ?? 0);
+  // LAST wins — a newer verdict overwrites, a newer reopen un-resolves, and a
+  // newer deletion tombstones (the editor's action must never be undone by
+  // the other device pushing older state back).
+  const actionAt = (row: {
+    resolvedAt: number | null;
+    reopenedAt: number | null;
+    deletedAt: number | null;
+  }) => Math.max(row.resolvedAt ?? 0, row.reopenedAt ?? 0, row.deletedAt ?? 0);
   const localById = new Map(localClaimRows.map((r) => [r.id, r]));
   let resolutions = 0;
   for (const c of snapshot.claims) {
@@ -136,7 +142,10 @@ export async function importSnapshot(snapshot: ExportSnapshot): Promise<ImportRe
     if (!local || actionAt(c) <= actionAt(local)) {
       continue;
     }
-    if (c.status === 'resolved' && c.outcome) {
+    if (c.deletedAt) {
+      await db.update(claims).set({ deletedAt: c.deletedAt }).where(eq(claims.id, c.id));
+      resolutions += 1;
+    } else if (c.status === 'resolved' && c.outcome) {
       await db
         .update(claims)
         .set({
@@ -146,6 +155,7 @@ export async function importSnapshot(snapshot: ExportSnapshot): Promise<ImportRe
           resolutionNote: c.resolutionNote,
           resolutionSourceUrl: c.resolutionSourceUrl,
           reopenedAt: null,
+          deletedAt: null,
         })
         .where(eq(claims.id, c.id));
       resolutions += 1;
@@ -159,6 +169,7 @@ export async function importSnapshot(snapshot: ExportSnapshot): Promise<ImportRe
           resolutionNote: null,
           resolutionSourceUrl: null,
           reopenedAt: c.reopenedAt,
+          deletedAt: null,
         })
         .where(eq(claims.id, c.id));
       resolutions += 1;

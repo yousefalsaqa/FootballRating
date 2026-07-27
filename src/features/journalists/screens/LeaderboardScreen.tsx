@@ -363,12 +363,13 @@ export function LeaderboardScreen() {
           color="inkSecondary"
           accessibilityRole="button"
           accessibilityLabel={searchOpen ? 'Close search' : 'Open search'}
+          numberOfLines={1}
           onPress={() => {
             setSearchOpen(!searchOpen);
             setSearch('');
           }}
         >
-          {searchOpen ? 'Close ✕' : 'Search'}
+          {searchOpen ? 'Close ✕' : 'Search'}
         </Text>
         <Text
           variant="stamp"

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import {
@@ -17,12 +17,15 @@ import { newId } from '@/lib/id';
 export interface ClaimFilter {
   status?: 'pending' | 'resolved';
   journalistId?: string;
+  /** Include soft-deleted tombstones (dedupe/sync internals only). */
+  includeDeleted?: boolean;
 }
 
 export async function listClaims(filter?: ClaimFilter): Promise<Claim[]> {
   const conditions = [
     filter?.status ? eq(claims.status, filter.status) : undefined,
     filter?.journalistId ? eq(claims.journalistId, filter.journalistId) : undefined,
+    filter?.includeDeleted ? undefined : isNull(claims.deletedAt),
   ].filter((c) => c !== undefined);
   return db
     .select()
@@ -32,7 +35,11 @@ export async function listClaims(filter?: ClaimFilter): Promise<Claim[]> {
 }
 
 export async function getClaim(id: string): Promise<Claim | undefined> {
-  const rows = await db.select().from(claims).where(eq(claims.id, id)).limit(1);
+  const rows = await db
+    .select()
+    .from(claims)
+    .where(and(eq(claims.id, id), isNull(claims.deletedAt)))
+    .limit(1);
   return rows[0];
 }
 
@@ -59,9 +66,9 @@ export function claimStoryKey(
   ].join('|');
 }
 
-/** The moment of the last deliberate verdict/overrule on a claim. */
+/** The moment of the last deliberate verdict/overrule/deletion on a claim. */
 function editorialActionAt(claim: Claim): number {
-  return Math.max(claim.resolvedAt ?? 0, claim.reopenedAt ?? 0);
+  return Math.max(claim.resolvedAt ?? 0, claim.reopenedAt ?? 0, claim.deletedAt ?? 0);
 }
 
 /**
@@ -163,8 +170,13 @@ export async function reopenClaim(id: string): Promise<void> {
     .where(eq(claims.id, id));
 }
 
+/**
+ * Soft delete: the row stays as a hidden tombstone so the deletion syncs to
+ * the ledger and other devices instead of being pushed back by them.
+ */
 export async function deleteClaim(id: string): Promise<void> {
-  await db.delete(claims).where(eq(claims.id, id));
+  await db.delete(claimTags).where(eq(claimTags.claimId, id));
+  await db.update(claims).set({ deletedAt: Date.now() }).where(eq(claims.id, id));
 }
 
 /** Slim resolved-claim rows for the scoring engine — keep this query cheap. */
@@ -186,13 +198,16 @@ export async function listScoringRows(): Promise<ScoringRow[]> {
       resolvedAt: claims.resolvedAt,
     })
     .from(claims)
-    .where(eq(claims.status, 'resolved'));
+    .where(and(eq(claims.status, 'resolved'), isNull(claims.deletedAt)));
   return rows.filter((r): r is ScoringRow => r.outcome !== null);
 }
 
 /** Total filed claims (any status) per journalist — for table sample sizes. */
 export async function listClaimCountsByJournalist(): Promise<Map<string, number>> {
-  const rows = await db.select({ journalistId: claims.journalistId }).from(claims);
+  const rows = await db
+    .select({ journalistId: claims.journalistId })
+    .from(claims)
+    .where(isNull(claims.deletedAt));
   const counts = new Map<string, number>();
   for (const row of rows) {
     counts.set(row.journalistId, (counts.get(row.journalistId) ?? 0) + 1);

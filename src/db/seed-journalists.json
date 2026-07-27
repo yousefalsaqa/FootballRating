@@ -13,5 +13,13 @@
   { "id": "seed-sacha-tavolieri", "name": "Sacha Tavolieri", "outlet": "Sky Sport CH", "handle": "sachatavolieri" },
   { "id": "seed-mike-mcgrath", "name": "Mike McGrath", "outlet": "The Telegraph", "handle": "mcgrathmike" },
   { "id": "seed-simon-stone", "name": "Simon Stone", "outlet": "BBC Sport", "handle": "sistoney67" },
-  { "id": "seed-cesar-luis-merlo", "name": "César Luis Merlo", "outlet": "TyC Sports", "handle": "clmerlo" }
+  { "id": "seed-cesar-luis-merlo", "name": "César Luis Merlo", "outlet": "TyC Sports", "handle": "clmerlo" },
+  { "id": "seed-guillem-balague", "name": "Guillem Balagué", "outlet": "BBC", "handle": "guillembalague" },
+  { "id": "seed-rudy-galetti", "name": "Rudy Galetti", "outlet": "TEAMtalk", "handle": "rudygaletti" },
+  { "id": "seed-ekrem-konur", "name": "Ekrem Konur", "outlet": "Independent", "handle": "ekremkonur" },
+  { "id": "seed-gianluigi-longari", "name": "Gianluigi Longari", "outlet": "Sportitalia", "handle": "glongari" },
+  { "id": "seed-daniele-longo", "name": "Daniele Longo", "outlet": "Calciomercato", "handle": "86_longo" },
+  { "id": "seed-loic-tanzi", "name": "Loïc Tanzi", "outlet": "L'Équipe", "handle": "tanziloic" },
+  { "id": "seed-achraf-ben-ayad", "name": "Achraf Ben Ayad", "outlet": "beIN Sports", "handle": "benayadachraf" },
+  { "id": "seed-john-percy", "name": "John Percy", "outlet": "The Telegraph", "handle": "jpercytelegraph" }
 ]
