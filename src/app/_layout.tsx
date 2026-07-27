@@ -6,7 +6,6 @@ import {
   useFonts,
 } from '@expo-google-fonts/inter';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -14,8 +13,7 @@ import * as SystemUI from 'expo-system-ui';
 import { useEffect, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
-import { db } from '@/db/client';
-import migrations from '@/db/migrations/migrations';
+import { useDatabaseReady } from '@/db/migrate';
 import { seedIfNeeded } from '@/db/seed';
 import { useSettingsStore } from '@/features/settings/store';
 import { queryClient } from '@/lib/query-client';
@@ -30,7 +28,7 @@ SplashScreen.preventAutoHideAsync();
  * so the error screen is reachable.
  */
 function DatabaseGate({ children, onSettled }: { children: ReactNode; onSettled: () => void }) {
-  const { success, error } = useMigrations(db, migrations);
+  const { success, error } = useDatabaseReady();
   const [seeded, setSeeded] = useState(false);
 
   useEffect(() => {

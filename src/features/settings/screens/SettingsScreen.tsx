@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import Constants from 'expo-constants';
 import { useState } from 'react';
-import { Alert, View } from 'react-native';
+import { Alert, Platform, View } from 'react-native';
 
 import { DAILY_BUDGET } from '@/features/football/cache';
 import { useApiUsage } from '@/features/football/hooks';
@@ -80,13 +80,15 @@ export function SettingsScreen() {
           </Card>
         </View>
 
-        <View style={{ gap: space.sm }}>
-          <Text variant="caption" color="inkTertiary">
-            Data
-          </Text>
-          <Button label="Export data" variant="secondary" onPress={() => void runExport()} disabled={busy} />
-          <Button label="Import data" variant="secondary" onPress={() => void runImport()} disabled={busy} />
-        </View>
+        {Platform.OS !== 'web' ? (
+          <View style={{ gap: space.sm }}>
+            <Text variant="caption" color="inkTertiary">
+              Data
+            </Text>
+            <Button label="Export data" variant="secondary" onPress={() => void runExport()} disabled={busy} />
+            <Button label="Import data" variant="secondary" onPress={() => void runImport()} disabled={busy} />
+          </View>
+        ) : null}
 
         <View style={{ gap: space.sm }}>
           <Text variant="caption" color="inkTertiary">

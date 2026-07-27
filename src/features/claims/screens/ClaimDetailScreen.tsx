@@ -1,4 +1,3 @@
-import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { Alert, View } from 'react-native';
@@ -18,6 +17,7 @@ import { useJournalist } from '@/features/journalists/hooks';
 import { scoreImpact } from '@/features/scoring/engine';
 import { windowLabel } from '@/lib/dates';
 import { formatDate, formatDelta } from '@/lib/format';
+import { successTick } from '@/lib/haptics';
 import { Button, Card, EmptyState, KeyValueRow, Screen, Skeleton, Text } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
 
@@ -67,7 +67,7 @@ export function ClaimDetailScreen() {
   }
 
   const resolve = (outcome: ClaimOutcome) => {
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    successTick();
     resolveMutation.mutate({ id: claim.id, outcome });
   };
 

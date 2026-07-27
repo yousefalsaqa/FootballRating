@@ -1,7 +1,7 @@
-import * as Haptics from 'expo-haptics';
 import { Pressable, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
+import { lightTap } from '@/lib/haptics';
 import { Text } from '@/ui/components/Text';
 import { useTheme } from '@/ui/theme';
 
@@ -40,7 +40,7 @@ export function Button({
 
   const handlePress = () => {
     if (haptic) {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      lightTap();
     }
     onPress();
   };

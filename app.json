@@ -12,6 +12,11 @@
       "bundleIdentifier": "com.yousef.journalistrater",
       "supportsTablet": false
     },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/images/icon.png"
+    },
     "android": {
       "package": "com.yousef.journalistrater",
       "adaptiveIcon": {
@@ -39,7 +44,8 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": true,
+      "baseUrl": "/FootballRating"
     }
   }
 }

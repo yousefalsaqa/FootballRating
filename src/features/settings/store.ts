@@ -1,6 +1,6 @@
-import Storage from 'expo-sqlite/kv-store';
 import { create } from 'zustand';
 
+import { kv } from '@/lib/kv';
 import type { ThemePreference } from '@/ui/theme';
 
 const THEME_KEY = 'settings.themePreference';
@@ -11,15 +11,15 @@ interface SettingsState {
 }
 
 function loadThemePreference(): ThemePreference {
-  const stored = Storage.getItemSync(THEME_KEY);
+  const stored = kv.getItemSync(THEME_KEY);
   return stored === 'light' || stored === 'dark' ? stored : 'system';
 }
 
-/** App settings, persisted synchronously in expo-sqlite's key-value store. */
+/** App settings, persisted synchronously (expo-sqlite kv-store; localStorage on web). */
 export const useSettingsStore = create<SettingsState>((set) => ({
   themePreference: loadThemePreference(),
   setThemePreference: (preference) => {
-    Storage.setItemSync(THEME_KEY, preference);
+    kv.setItemSync(THEME_KEY, preference);
     set({ themePreference: preference });
   },
 }));
