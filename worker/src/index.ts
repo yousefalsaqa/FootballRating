@@ -130,16 +130,42 @@ function slugify(text: string): string {
     .replace(/(^-|-$)/g, '');
 }
 
-/** Bing News RSS — Google News 503s requests from Cloudflare's network. */
-function feedUrlFor(name: string): string {
-  return `https://www.bing.com/news/search?q=${encodeURIComponent(`"${name}" transfer`)}&format=rss`;
-}
-
 const FEED_HEADERS = {
   'user-agent':
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
   accept: 'application/rss+xml, application/xml, text/xml',
 };
+
+/**
+ * News search with fallbacks — Bing quietly serves an EMPTY feed shell when
+ * it rate-limits (status 200, zero items), which stalled the wire. Google
+ * News is attempted second (historically 503'd Cloudflare, but worth trying
+ * whenever Bing runs dry).
+ */
+function newsSourceUrls(query: string): string[] {
+  return [
+    `https://www.bing.com/news/search?q=${encodeURIComponent(query)}&format=rss`,
+    `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`,
+  ];
+}
+
+async function fetchNewsItems(query: string): Promise<{ title: string; link: string; pubDate: number }[]> {
+  for (const url of newsSourceUrls(query)) {
+    try {
+      const response = await fetch(url, { headers: FEED_HEADERS });
+      if (!response.ok) {
+        continue;
+      }
+      const items = parseRssItems(await response.text());
+      if (items.length) {
+        return items;
+      }
+    } catch (error) {
+      console.error('Feed source failed', url, error);
+    }
+  }
+  return [];
+}
 
 /**
  * Collects fresh, unseen feed items for ONE journalist per run, rotating
@@ -155,13 +181,12 @@ async function collectFreshItems(env: Env, now: number): Promise<FeedItem[]> {
   }
   const fresh: FeedItem[] = [];
   try {
-    const response = await fetch(feedUrlFor(journalist.name), { headers: FEED_HEADERS });
-    if (!response.ok) {
-      console.error(`Feed ${response.status} for ${journalist.name}`);
+    const items = await fetchNewsItems(`"${journalist.name}" transfer`);
+    if (!items.length) {
+      console.error(`No feed items from any source for ${journalist.name}`);
       return [];
     }
-    const xml = await response.text();
-    for (const item of parseRssItems(xml)) {
+    for (const item of items) {
       if (fresh.length >= MAX_ITEMS_PER_RUN || now - item.pubDate > MAX_ARTICLE_AGE_MS) {
         continue;
       }
@@ -361,28 +386,30 @@ async function resolveClaims(env: Env, requested: ResolveRequestClaim[]): Promis
   for (const claim of batch) {
     // Two angles: the claimed destination, and the player alone — the latter
     // surfaces where they ACTUALLY ended up, which is what "false" needs.
-    const queries = [`"${claim.playerName}" ${claim.toClubName}`, `"${claim.playerName}" transfer`];
-    const evidence: { title: string; link: string; pubDate: number }[] = [];
-    for (const query of queries) {
-      try {
-        const response = await fetch(
-          `https://www.bing.com/news/search?q=${encodeURIComponent(query)}&format=rss`,
-          { headers: FEED_HEADERS },
-        );
-        if (response.ok) {
-          const xml = await response.text();
-          for (const item of parseRssItems(xml)) {
-            if (!evidence.some((e) => e.title === item.title)) {
-              evidence.push({ title: item.title, link: item.link, pubDate: item.pubDate });
-            }
+    // Evidence is cached per player+club for 3h — resolution sweeps were
+    // hammering the news sources hard enough to get the worker rate-limited.
+    const cacheKey = `ev:${await sha1(`${claim.playerName}|${claim.toClubName}`.toLowerCase())}`;
+    let capped: { title: string; link: string; pubDate: number }[] | null = null;
+    const cachedEvidence = await env.INGEST_KV.get(cacheKey);
+    if (cachedEvidence) {
+      capped = JSON.parse(cachedEvidence) as { title: string; link: string; pubDate: number }[];
+    }
+    if (!capped) {
+      const queries = [`"${claim.playerName}" ${claim.toClubName}`, `"${claim.playerName}" transfer`];
+      const evidence: { title: string; link: string; pubDate: number }[] = [];
+      for (const query of queries) {
+        for (const item of await fetchNewsItems(query)) {
+          if (!evidence.some((e) => e.title === item.title)) {
+            evidence.push({ title: item.title, link: item.link, pubDate: item.pubDate });
           }
         }
-      } catch (error) {
-        console.error(`Evidence fetch failed for ${claim.playerName}`, error);
+      }
+      // Newest first, so the cap keeps the freshest coverage.
+      capped = evidence.sort((a, b) => b.pubDate - a.pubDate).slice(0, RESOLVE_EVIDENCE_TITLES);
+      if (capped.length) {
+        await env.INGEST_KV.put(cacheKey, JSON.stringify(capped), { expirationTtl: 3 * 60 * 60 });
       }
     }
-    // Newest first, so the cap keeps the freshest coverage.
-    const capped = evidence.sort((a, b) => b.pubDate - a.pubDate).slice(0, RESOLVE_EVIDENCE_TITLES);
     evidenceByClaim.set(claim.id, capped);
     payload.push({
       id: claim.id,
@@ -704,20 +731,22 @@ export default {
       ctx.waitUntil(runIngest(env));
       return new Response(JSON.stringify({ started: true }), { headers: CORS_HEADERS });
     }
-    // Diagnostics: fetch one feed and run a trivial AI prompt, report results.
+    // Diagnostics: probe every feed source and run a trivial AI prompt.
     if (url.pathname === '/debug') {
       const debug: Record<string, unknown> = {};
-      try {
-        const first = journalists[0];
-        const response = await fetch(feedUrlFor(first?.name ?? 'football'), { headers: FEED_HEADERS });
-        debug.feedStatus = response.status;
-        const xml = await response.text();
-        const items = parseRssItems(xml);
-        debug.itemsParsed = items.length;
-        debug.firstTitles = items.slice(0, 3).map((i) => i.title);
-      } catch (error) {
-        debug.feedError = String(error);
+      const query = `"${journalists[0]?.name ?? 'football'}" transfer`;
+      const sources: Record<string, unknown> = {};
+      for (const sourceUrl of newsSourceUrls(query)) {
+        const host = new URL(sourceUrl).hostname;
+        try {
+          const response = await fetch(sourceUrl, { headers: FEED_HEADERS });
+          const items = parseRssItems(await response.text());
+          sources[host] = { status: response.status, items: items.length, first: items[0]?.title ?? null };
+        } catch (error) {
+          sources[host] = { error: String(error) };
+        }
       }
+      debug.sources = sources;
       try {
         const ai = await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
           messages: [{ role: 'user', content: 'Reply with exactly: OK' }],
