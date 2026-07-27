@@ -1,37 +1,47 @@
 # Session Handoff
 
-_Last updated: 2026-07-27_
+_Last updated: 2026-07-27 (second session)_
 
-## Where the project stands
+## What this is now
 
-All of v1 is built, reviewed, and pushed to https://github.com/yousefalsaqa/FootballRating (branch `main`). Working state: **66 tests green, typecheck + lint clean, app runs in Expo Go**.
+**THE TRANSFER LEDGER** — a football-newspaper-styled journalist reliability tracker with a fully automatic claim pipeline. Live web app: https://yousefalsaqa.github.io/FootballRating/ · Repo: https://github.com/yousefalsaqa/FootballRating (`main`, public). State: **74 tests green, typecheck + lint clean, web deploy verified via headless-browser screenshots.**
 
-Done:
-- **Phases 0–6 complete**: scaffold (Expo SDK 57, strict TS, React Compiler), design system (`src/ui`), drizzle/SQLite data layer (migrations 0000 + 0001), scoring engine, all screens (tabs, leaderboard, journalist detail, claims, 4-step wizard), football API layer (api-sports.io with SQLite cache + 100/day budget guard), polish (export/import, filters, icon/splash, haptics).
-- **Adversarial review ran** (29-agent workflow): 6 confirmed bugs found and fixed (splash deadlock, leaderboard tier interleaving, HTTP-200 error bodies cached, failures cached as success, import tag-link drops, per-install seed ids). 3 claims refuted.
-- **User-requested features shipped**: journalist search (name/outlet/handle) with explainable "Why this score" scorecard (X of Y correct, last 12 months, per-confidence breakdown), and paste-an-X-link lookup via handle matching (on-device only — user explicitly chose this over AI link analysis).
+Two deployables:
+1. **The app** (Expo SDK 57, React Native + web). Runs in Expo Go *only when Expo Go supports SDK 57* — the store version lagged, which is why the web deploy exists (see "Expo Go saga" below).
+2. **The ingest worker** (`worker/`, Cloudflare Worker at `https://journalist-rater-ingest.yousefalsaqa.workers.dev`) — user's Cloudflare account (wrangler is logged in on this machine), KV namespace `a44d4381af1e4d018c75569217fb1841`, cron `*/5 * * * *`. **Runs entirely on free tier** (user explicitly refuses paid services — no Claude API, though the code auto-upgrades to Claude if `ANTHROPIC_API_KEY` secret is ever set).
 
-## Next steps (in order)
+## The pipeline (all free, all verified working)
 
-1. **Phase 7 — release hardening**: needs the user to run `npx eas login` (free Expo account), then `npx eas init`, then set `EXPO_PUBLIC_API_FOOTBALL_KEY` via `eas env:create`. Then preview builds (`eas build --profile preview`) for real-device QA. See RELEASING.md.
-2. **Phase 8 — ship**: store metadata/screenshots, publish PRIVACY.md to a public URL, production builds, `eas submit`. Blockers only the user can clear: Apple Developer ($99/yr) and Google Play ($25) accounts.
-3. Optional backlog discussed: AI-powered link analysis (rejected for v1 to keep "no data leaves device"), community ratings/backend (deferred from initial planning).
+- Worker cron: every 5 min, ONE journalist (KV cursor rotation — free-tier CPU can't sweep all 15) → Bing News RSS (`format=rss`; **Google News 503s Cloudflare IPs**, don't switch back; **do not add `qft=sortbydate` — it breaks the RSS**) → parse ≤120 items → unseen items <48h old → **Workers AI `@cf/meta/llama-3.3-70b-instruct-fp8-fast`** extracts structured claims (the 3.1-8b model is deprecated; AI responses may be objects, not strings — coerced in `runModelWith`) → drafts in KV (72h TTL), deduped by journalist+player+destination. Bing redirect links are unwrapped to real article URLs (worker-side for new, `lib/links.ts normalizeSourceUrl` client-side for old).
+- App polls `GET /claims` every 5 min → **auto-file** (default ON, Desk toggle) inserts drafts as pending claims; **auto-resolve** (default ON) POSTs ≤5 pending claims (>24h old, rechecked every 12h, tracked in kv `resolve.checkedAt`) to `POST /resolve` → worker searches coverage, AI rules `true|partial|false|unknown`; only conclusive verdicts are recorded. Model is deliberately conservative — user may ask to loosen it.
+- Debug endpoints: `GET /debug` (feed status, AI check, KV counts), `GET /run` (manual cycle). Journalist roster shared app↔worker via `src/db/seed-journalists.json` (15 journalists, fixed `seed-*` ids).
 
-## How to run / test
+## Design (user-supplied detailed brief — keep to it)
 
-- `npm start` in the project root; open in **Expo Go** on the same Wi-Fi (server URL form: `exp://<pc-lan-ip>:8081`). PC's Wi-Fi IP last session: 192.168.2.25.
-- API key lives in `.env.local` (gitignored), copied from the LaLigaFantasy project's `.env` (`API_FOOTBALL_KEY` → renamed `EXPO_PUBLIC_API_FOOTBALL_KEY`).
+Newspaper system: Playfair Display 900 masthead, Barlow Condensed headlines/ranks/scores, Source Serif 4 body, Inter metadata; paper `#F1ECDF` / ink `#151411` palette in `ui/tokens.ts`; radii ≤5px; rules (`Divider weight=thin|medium|strong`) instead of cards; square monogram avatars (no circles); verdict stamps VERIFIED TRUE / PARTIALLY CONFIRMED / REPORT DISPROVED / DEVELOPING STORY; front page = edition bar → masthead → WHO ACTUALLY KNOWS? → lead story → 2nd/3rd → continuous Reliability Table (`X–Y–Z · A of B resolved`); `/methodology` page documents the real formula. Known gap: desktop still uses mobile composition (user hasn't pushed on it).
 
-## Session conventions (user-set)
+## Data integrity rules (user cares a lot)
 
-- **No duplicate functions/components/constants anywhere** — hard rules in CLAUDE.md; follow them for every change.
-- **No Co-Authored-By trailers in commits.**
-- User wants to be told as soon as things are testable on their phone.
-- Multi-agent supervisor reviews: user opted in; run the adversarial review workflow again after major feature batches (script cached at `.claude/.../workflows/scripts/adversarial-review-*.js`, pattern: finders → dedup → 2 refuters per finding).
+- **Never invent claims.** v1 fake demo claims caused a complaint; they're purged by the v2 seeder (`V1_FAKE_HEADLINES`). Seeds must be real, sourced (claims carry `sourceUrl`), attributable reports. Current seeds: the 2026 summer window set incl. resolved Tonali→Spurs (Romano), Jiménez→Bournemouth (Di Marzio), Summerville→Al-Hilal (Ornstein), Brown→Bayern (Plettenberg).
+- Ratings are always derived (scoring engine), never stored. Resolved-vs-filed distinction matters to the user — rows show both.
+- Instagram/Snap/X profile links resolve journalists by handle; IG *post* links can't (no author in URL) — UI explains this.
 
-## Gotchas for the next session
+## Next steps
 
-- Windows machine: no local iOS builds; better-sqlite3 doesn't compile — tests use `@libsql/client` in-memory with the real migrations.
-- React Compiler is ON: no `Date.now()` in render (see `ScoringSnapshot.asOf` pattern), Reanimated values use `.get()/.set()`.
-- After editing `src/db/schema.ts`: `npm run db:generate`, never hand-edit `src/db/migrations/`.
-- The folder name has a space — scaffold-type tools may choke; package name is `journalist-rater`.
+1. **Watch auto-resolve quality** over a few days; loosen `RESOLUTION_PROMPT` if too timid (user wants ~80% auto-resolution).
+2. **Phase 7 — TestFlight/EAS**: needs `npx eas login`, `eas init`, EAS env vars (`EXPO_PUBLIC_API_FOOTBALL_KEY`, `EXPO_PUBLIC_INGEST_URL`), Apple Developer $99 (user knows). See RELEASING.md.
+3. Possible asks on deck: desktop multi-column layout, real journalist portraits, attribution accuracy of extracted drafts (aggregator headlines sometimes credit the wrong reporter).
+
+## How to run / deploy
+
+- Dev: `npm start` (+ Expo Go if SDK matches). Web deploy: `npm run deploy:web` (export + git-based gh-pages push with `.nojekyll`; the gh-pages npm package is NOT used — it silently dropped `assets/node_modules` fonts). Worker deploy: `cd worker && npx wrangler deploy`.
+- `.env.local` (gitignored): `EXPO_PUBLIC_API_FOOTBALL_KEY` (from LaLigaFantasy), `EXPO_PUBLIC_INGEST_URL`.
+
+## Gotchas (hard-won)
+
+- Expo Go saga: user's iPhone Expo Go rejected both SDK 57 and a temporary SDK 56 downgrade ("out of date", no store update available — likely device-capped). Downgrade was reverted; **web is the primary test surface** until TestFlight.
+- sql.js web driver: `db.query.findFirst` returns a truthy husk on empty tables — use `select().limit(1)` (see `seed.ts hasFlag`). Web DB = sql.js + IndexedDB persist loop (`db/client.web.ts`); native = expo-sqlite; platform-split via `.web.ts` files (`db/client`, `db/migrate`, `lib/kv`).
+- React Compiler: no `Date.now()` in render (queryFn `asOf` pattern / lazy `useState`); no setState-in-effect sync; Reanimated `.get()/.set()`.
+- Typed routes: `.expo/types/router.d.ts` regenerates only on `expo start` — after adding a route, stale types fail typecheck (delete the file or start once).
+- Repo tests: in-memory libsql + committed migrations (better-sqlite3 won't build here). 74 tests must stay green: `npm run typecheck && npx expo lint && npm test` before commits.
+- User prefs: no duplication (CLAUDE.md hard rules), no commit trailers, tell them promptly when something is testable, free-tier only, plain non-jargon explanations.
