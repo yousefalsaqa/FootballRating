@@ -18,6 +18,7 @@ import { View } from 'react-native';
 
 import { useDatabaseReady } from '@/db/migrate';
 import { seedIfNeeded } from '@/db/seed';
+import { reloadEdition, useNewEditionAvailable } from '@/lib/edition';
 import { useSettingsStore } from '@/features/settings/store';
 import { queryClient } from '@/lib/query-client';
 import { Text } from '@/ui/components';
@@ -94,6 +95,7 @@ function HeaderBack() {
 
 function ThemedApp({ onDbSettled }: { onDbSettled: () => void }) {
   const theme = useTheme();
+  const newEdition = useNewEditionAvailable();
 
   useEffect(() => {
     // Keeps the native root view in sync with the theme (no white flash in dark mode).
@@ -103,6 +105,30 @@ function ThemedApp({ onDbSettled }: { onDbSettled: () => void }) {
   return (
     <>
       <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
+      {newEdition ? (
+        <View
+          style={{
+            backgroundColor: theme.colors.ink,
+            paddingVertical: theme.space.sm,
+            paddingHorizontal: theme.space.lg,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <Text variant="caption" style={{ color: theme.colors.bg }}>
+            A new edition of the app is out.
+          </Text>
+          <Text
+            variant="stamp"
+            accessibilityRole="button"
+            onPress={reloadEdition}
+            style={{ color: theme.colors.bg, textDecorationLine: 'underline' }}
+          >
+            Reload
+          </Text>
+        </View>
+      ) : null}
       <DatabaseGate onSettled={onDbSettled}>
         <Stack
           screenOptions={{

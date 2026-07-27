@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo } from 'react';
-import { Alert, View } from 'react-native';
+import { View } from 'react-native';
 
 import type { ClaimOutcome } from '@/db/schema';
 import { CONFIDENCE_LABELS, VerdictStamp } from '@/features/claims/components';
@@ -16,6 +16,7 @@ import { useTransferCheck } from '@/features/football/hooks';
 import { useJournalist } from '@/features/journalists/hooks';
 import { useEditorMode } from '@/features/settings/hooks';
 import { scoreImpact } from '@/features/scoring/engine';
+import { confirmAction } from '@/lib/confirm';
 import { windowLabel } from '@/lib/dates';
 import { formatDate, formatDelta } from '@/lib/format';
 import { successTick } from '@/lib/haptics';
@@ -76,14 +77,9 @@ export function ClaimDetailScreen() {
   };
 
   const confirmDelete = () => {
-    Alert.alert('Delete claim?', 'This removes the claim permanently.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => deleteMutation.mutate(claim.id, { onSuccess: () => router.back() }),
-      },
-    ]);
+    confirmAction('Delete claim?', 'This removes the claim permanently.', 'Delete', () =>
+      deleteMutation.mutate(claim.id, { onSuccess: () => router.back() }),
+    );
   };
 
   const tagList = (tagsQuery.data ?? []).map((t) => t.name).join(', ');

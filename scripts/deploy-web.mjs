@@ -19,6 +19,8 @@ function git(args, cwd) {
 copyFileSync('dist/index.html', 'dist/404.html');
 // Disable Jekyll — it silently drops the _expo/ directory otherwise.
 writeFileSync('dist/.nojekyll', '');
+// Edition stamp: the app polls this to offer a reload when a deploy lands.
+writeFileSync('dist/version.json', JSON.stringify({ v: new Date().toISOString() }));
 
 const remote = git('remote get-url origin');
 const stage = mkdtempSync(join(tmpdir(), 'ghpages-'));

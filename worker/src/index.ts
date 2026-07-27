@@ -207,9 +207,11 @@ Omit items that are not claims. If unsure, omit.`;
  */
 function isDescriptivePlayerName(name: string): boolean {
   return (
+    name.trim().length < 3 ||
     /\b(forward|striker|winger|midfielder|defender|keeper|goalkeeper|full-?back|wing-?back|player|star|target|wonderkid|starlet|international|captain)\b/i.test(
       name,
-    ) || /^ex[- ]/i.test(name.trim())
+    ) ||
+    /^ex[- ]/i.test(name.trim())
   );
 }
 

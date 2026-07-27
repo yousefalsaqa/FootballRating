@@ -1,7 +1,7 @@
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, ScrollView, View } from 'react-native';
+import { Alert, Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Claim } from '@/db/schema';
@@ -57,6 +57,11 @@ export function ClaimsScreen() {
 
   const quickResolve = (claim: Claim) => {
     if (claim.status !== 'pending') {
+      return;
+    }
+    // Alert menus are a no-op on web — the claim page has the full buttons.
+    if (Platform.OS === 'web') {
+      router.push(`/claim/${claim.id}`);
       return;
     }
     Alert.alert('Resolve claim', claim.headline, [
