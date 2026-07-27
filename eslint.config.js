@@ -6,4 +6,12 @@ module.exports = defineConfig([
   {
     ignores: ['dist/*', 'src/db/migrations/*'],
   },
+  {
+    // Test files: jest.mock factories legitimately use require() above imports.
+    files: ['**/__tests__/**'],
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+      'import/first': 'off',
+    },
+  },
 ]);
