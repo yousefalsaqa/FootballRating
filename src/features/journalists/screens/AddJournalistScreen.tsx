@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { useCreateJournalist } from '@/features/journalists/hooks';
-import { findJournalistByName } from '@/features/journalists/repository';
+import { findJournalistByHandle, findJournalistByName } from '@/features/journalists/repository';
+import { normalizeHandle } from '@/lib/links';
 import { Button, Screen, SearchInput, Text } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
 
@@ -14,6 +15,7 @@ export function AddJournalistScreen() {
   const createMutation = useCreateJournalist();
   const [name, setName] = useState('');
   const [outlet, setOutlet] = useState('');
+  const [handle, setHandle] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const save = async () => {
@@ -26,8 +28,21 @@ export function AddJournalistScreen() {
       setError('That journalist already exists.');
       return;
     }
+    let normalizedHandle: string | undefined;
+    if (handle.trim()) {
+      const normalized = normalizeHandle(handle);
+      if (!normalized) {
+        setError('That X handle doesn’t look valid.');
+        return;
+      }
+      if (await findJournalistByHandle(normalized)) {
+        setError('Another journalist already uses that handle.');
+        return;
+      }
+      normalizedHandle = normalized;
+    }
     createMutation.mutate(
-      { name: trimmed, outlet: outlet.trim() || undefined },
+      { name: trimmed, outlet: outlet.trim() || undefined, handle: normalizedHandle },
       { onSuccess: () => router.back() },
     );
   };
@@ -59,6 +74,19 @@ export function AddJournalistScreen() {
             value={outlet}
             onChangeText={setOutlet}
             autoCapitalize="words"
+          />
+        </View>
+        <View style={{ gap: space.sm }}>
+          <Text variant="caption" color="inkTertiary">
+            X handle (optional — enables paste-a-link lookup)
+          </Text>
+          <SearchInput
+            placeholder="e.g. @FabrizioRomano"
+            value={handle}
+            onChangeText={(value) => {
+              setHandle(value);
+              setError(null);
+            }}
           />
         </View>
         {error ? (

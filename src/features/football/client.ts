@@ -6,7 +6,7 @@ import {
   isBudgetExhausted,
   setCached,
 } from '@/features/football/cache';
-import { apiEnvelope, type ApiResult } from '@/features/football/types';
+import { apiEnvelope, envelopeHasErrors, type ApiResult } from '@/features/football/types';
 
 /**
  * The single gateway to api-sports.io. Order of defense:
@@ -43,7 +43,7 @@ export async function apiGet<T extends z.ZodType>(
   const cached = await getCached(cacheKey, now);
   if (cached !== null) {
     const parsed = envelope.safeParse(cached);
-    if (parsed.success) {
+    if (parsed.success && !envelopeHasErrors(parsed.data.errors)) {
       return { ok: true, data: parsed.data.response, fromCache: true };
     }
   }
@@ -74,6 +74,11 @@ export async function apiGet<T extends z.ZodType>(
   const parsed = envelope.safeParse(body);
   if (!parsed.success) {
     return { ok: false, reason: 'parse' };
+  }
+  // api-sports reports rate limits / bad keys with HTTP 200 + populated errors.
+  // Those must never be cached as valid empty results.
+  if (envelopeHasErrors(parsed.data.errors)) {
+    return { ok: false, reason: 'api-error' };
   }
   await setCached(cacheKey, body, ttlMs, now);
   return { ok: true, data: parsed.data.response, fromCache: false };

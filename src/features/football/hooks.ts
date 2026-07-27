@@ -2,8 +2,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { getTodayUsage } from '@/features/football/cache';
 import { getPlayerTransfers, searchPlayers, searchTeams } from '@/features/football/endpoints';
+import { ApiFailureError, type ApiResult } from '@/features/football/types';
 import { queryKeys } from '@/lib/query-client';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
+
+/** Failures must THROW so TanStack Query never caches them as fresh data. */
+function unwrap<T>(result: ApiResult<T>): T {
+  if (!result.ok) {
+    throw new ApiFailureError(result.reason);
+  }
+  return result.data;
+}
 
 /** Search fires at ≥3 chars after 450 ms idle — one request per typed query. */
 const MIN_QUERY_LENGTH = 3;
@@ -31,7 +40,7 @@ export function usePlayerSearch(rawQuery: string) {
     queryFn: async () => {
       const result = await searchPlayers(query);
       invalidateUsage();
-      return result;
+      return unwrap(result);
     },
   });
 }
@@ -46,7 +55,7 @@ export function useTeamSearch(rawQuery: string) {
     queryFn: async () => {
       const result = await searchTeams(query);
       invalidateUsage();
-      return result;
+      return unwrap(result);
     },
   });
 }

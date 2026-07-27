@@ -24,21 +24,29 @@ import { ThemeProvider, useTheme } from '@/ui/theme';
 
 SplashScreen.preventAutoHideAsync();
 
-/** Blocks rendering until migrations + first-run seed complete. */
-function DatabaseGate({ children, onReady }: { children: ReactNode; onReady: () => void }) {
+/**
+ * Blocks rendering until migrations + first-run seed settle.
+ * `onSettled` fires on BOTH success and failure — the splash must always lift
+ * so the error screen is reachable.
+ */
+function DatabaseGate({ children, onSettled }: { children: ReactNode; onSettled: () => void }) {
   const { success, error } = useMigrations(db, migrations);
   const [seeded, setSeeded] = useState(false);
 
   useEffect(() => {
+    if (error) {
+      onSettled();
+      return;
+    }
     if (success) {
       seedIfNeeded()
         .catch((e) => console.error('Seed failed', e))
         .finally(() => {
           setSeeded(true);
-          onReady();
+          onSettled();
         });
     }
-  }, [success, onReady]);
+  }, [success, error, onSettled]);
 
   if (error) {
     return (
@@ -56,7 +64,7 @@ function DatabaseGate({ children, onReady }: { children: ReactNode; onReady: () 
   return <>{children}</>;
 }
 
-function ThemedApp({ onDbReady }: { onDbReady: () => void }) {
+function ThemedApp({ onDbSettled }: { onDbSettled: () => void }) {
   const theme = useTheme();
 
   useEffect(() => {
@@ -67,7 +75,7 @@ function ThemedApp({ onDbReady }: { onDbReady: () => void }) {
   return (
     <>
       <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
-      <DatabaseGate onReady={onDbReady}>
+      <DatabaseGate onSettled={onDbSettled}>
         <Stack
           screenOptions={{
             headerStyle: { backgroundColor: theme.colors.bg },
@@ -94,28 +102,30 @@ function ThemedApp({ onDbReady }: { onDbReady: () => void }) {
 
 export default function RootLayout() {
   const themePreference = useSettingsStore((s) => s.themePreference);
-  const [dbReady, setDbReady] = useState(false);
-  const [fontsLoaded] = useFonts({
+  const [dbSettled, setDbSettled] = useState(false);
+  const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
   });
+  // A font failure must not deadlock the splash — render with fallback fonts.
+  const fontsSettled = fontsLoaded || fontError !== null;
 
   useEffect(() => {
-    if (fontsLoaded && dbReady) {
+    if (fontsSettled && dbSettled) {
       void SplashScreen.hideAsync();
     }
-  }, [fontsLoaded, dbReady]);
+  }, [fontsSettled, dbSettled]);
 
-  if (!fontsLoaded) {
+  if (!fontsSettled) {
     return null;
   }
 
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider preference={themePreference}>
-        <ThemedApp onDbReady={() => setDbReady(true)} />
+        <ThemedApp onDbSettled={() => setDbSettled(true)} />
       </ThemeProvider>
     </QueryClientProvider>
   );

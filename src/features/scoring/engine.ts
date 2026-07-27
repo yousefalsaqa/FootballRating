@@ -107,6 +107,56 @@ export function computeStatsByJournalist<T extends ScorableClaim & { journalistI
   return stats;
 }
 
+export interface Scorecard {
+  trueCount: number;
+  partialCount: number;
+  falseCount: number;
+  total: number;
+  /** "Correct" credit: true = 1, partial = ½. */
+  correct: number;
+  /** Same tally restricted to the recent window. */
+  recent: { correct: number; total: number; windowDays: number };
+  byConfidence: Record<ScorableClaim['confidence'], { correct: number; total: number }>;
+}
+
+const RECENT_WINDOW_DAYS = 365;
+
+/** The "why" behind a score — plain counts a user can verify by hand. */
+export function computeScorecard(claims: readonly ScorableClaim[], now: number): Scorecard {
+  const card: Scorecard = {
+    trueCount: 0,
+    partialCount: 0,
+    falseCount: 0,
+    total: claims.length,
+    correct: 0,
+    recent: { correct: 0, total: 0, windowDays: RECENT_WINDOW_DAYS },
+    byConfidence: {
+      1: { correct: 0, total: 0 },
+      2: { correct: 0, total: 0 },
+      3: { correct: 0, total: 0 },
+    },
+  };
+  const recentCutoff = now - RECENT_WINDOW_DAYS * MS_PER_DAY;
+  for (const claim of claims) {
+    const value = OUTCOME_VALUE[claim.outcome];
+    if (claim.outcome === 'true') {
+      card.trueCount++;
+    } else if (claim.outcome === 'partial') {
+      card.partialCount++;
+    } else {
+      card.falseCount++;
+    }
+    card.correct += value;
+    card.byConfidence[claim.confidence].total++;
+    card.byConfidence[claim.confidence].correct += value;
+    if (claim.claimedAt >= recentCutoff) {
+      card.recent.total++;
+      card.recent.correct += value;
+    }
+  }
+  return card;
+}
+
 /** How much one claim moved the journalist's score (shown after resolving). */
 export function scoreImpact(
   allClaims: readonly ScorableClaim[],

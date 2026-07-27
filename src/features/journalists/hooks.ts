@@ -3,7 +3,12 @@ import { useMemo } from 'react';
 
 import type { Journalist } from '@/db/schema';
 import { useScoringRows } from '@/features/claims/hooks';
-import { computeStats, computeStatsByJournalist } from '@/features/scoring/engine';
+import {
+  computeScorecard,
+  computeStats,
+  computeStatsByJournalist,
+  type Scorecard,
+} from '@/features/scoring/engine';
 import type { JournalistStats } from '@/features/scoring/types';
 import {
   createJournalist,
@@ -42,9 +47,15 @@ export function useRankedJournalists() {
     const { rows, asOf } = rowsQuery.data;
     const statsById = computeStatsByJournalist(rows, asOf);
     const empty = computeStats([], asOf);
+    // Ranked first (score bands keep tiers contiguous), unranked pinned last —
+    // otherwise unranked scores interleave and the tier grouping fragments.
     return journalistsQuery.data
       .map((j) => ({ ...j, stats: statsById.get(j.id) ?? empty }))
-      .sort((a, b) => b.stats.score - a.stats.score);
+      .sort(
+        (a, b) =>
+          Number(a.stats.tier === null) - Number(b.stats.tier === null) ||
+          b.stats.score - a.stats.score,
+      );
   }, [journalistsQuery.data, rowsQuery.data]);
 
   return {
@@ -68,6 +79,21 @@ export function useJournalistStats(journalistId: string) {
   }, [rowsQuery.data, journalistId]);
 }
 
+/** The explainable "why" behind one journalist's score. */
+export function useJournalistScorecard(journalistId: string): Scorecard | undefined {
+  const rowsQuery = useScoringRows();
+  return useMemo(() => {
+    if (!rowsQuery.data) {
+      return undefined;
+    }
+    const { rows, asOf } = rowsQuery.data;
+    return computeScorecard(
+      rows.filter((r) => r.journalistId === journalistId),
+      asOf,
+    );
+  }, [rowsQuery.data, journalistId]);
+}
+
 function useInvalidateJournalists() {
   const client = useQueryClient();
   return () => {
@@ -79,7 +105,8 @@ function useInvalidateJournalists() {
 export function useCreateJournalist() {
   const invalidate = useInvalidateJournalists();
   return useMutation({
-    mutationFn: (input: { name: string; outlet?: string }) => createJournalist(input),
+    mutationFn: (input: { name: string; outlet?: string; handle?: string }) =>
+      createJournalist(input),
     onSuccess: invalidate,
   });
 }

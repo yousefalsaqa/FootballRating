@@ -10,6 +10,8 @@ export const journalists = sqliteTable('journalists', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   outlet: text('outlet'),
+  /** X/Twitter handle, lowercase, no @ — used by paste-a-link lookup. */
+  handle: text('handle').unique(),
   avatarColor: text('avatar_color').notNull(),
   isSeeded: integer('is_seeded', { mode: 'boolean' }).notNull().default(false),
   createdAt: integer('created_at').notNull(),

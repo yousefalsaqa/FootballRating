@@ -7,12 +7,15 @@ import { claimTags, claims, journalists, tags } from '@/db/schema';
 /**
  * Whole-database export/import for the local-first escape hatch.
  * The snapshot schema is versioned so future shapes can migrate old files.
+ * Import merges by id first, then by name (journalists, tags) — ids are
+ * per-device UUIDs, so name identity is what makes cross-device merges work.
  */
 
 const journalistSnapshot = z.object({
   id: z.string(),
   name: z.string(),
   outlet: z.string().nullable(),
+  handle: z.string().nullable().optional().default(null),
   avatarColor: z.string(),
   isSeeded: z.boolean(),
   createdAt: z.number(),
@@ -68,48 +71,88 @@ export interface ImportResult {
   claims: number;
 }
 
-/**
- * Merges a snapshot into the current database. Existing rows (by id) are kept —
- * import never overwrites or deletes local data.
- */
+/** Merges a snapshot into the current database. Never overwrites local data. */
 export async function importSnapshot(snapshot: ExportSnapshot): Promise<ImportResult> {
-  const existingJournalists = new Set(
-    (await db.select({ id: journalists.id }).from(journalists)).map((r) => r.id),
-  );
-  const newJournalists = snapshot.journalists.filter((j) => !existingJournalists.has(j.id));
+  // Journalists: same id or same name → same journalist (remap the id).
+  const localJournalists = await db.select().from(journalists);
+  const localJournalistIds = new Set(localJournalists.map((j) => j.id));
+  const localJournalistIdByName = new Map(localJournalists.map((j) => [j.name, j.id]));
+  const localHandles = new Set(localJournalists.map((j) => j.handle).filter(Boolean));
+  const journalistIdRemap = new Map<string, string>();
+  const newJournalists: typeof snapshot.journalists = [];
+  for (const j of snapshot.journalists) {
+    if (localJournalistIds.has(j.id)) {
+      continue;
+    }
+    const idWithSameName = localJournalistIdByName.get(j.name);
+    if (idWithSameName) {
+      journalistIdRemap.set(j.id, idWithSameName);
+      continue;
+    }
+    // Drop a handle that already belongs to a different local journalist.
+    const handle = j.handle && !localHandles.has(j.handle) ? j.handle : null;
+    if (handle) {
+      localHandles.add(handle);
+    }
+    newJournalists.push({ ...j, handle });
+    localJournalistIds.add(j.id);
+    localJournalistIdByName.set(j.name, j.id);
+  }
   if (newJournalists.length) {
     await db.insert(journalists).values(newJournalists);
   }
 
+  // Claims: new ids only, journalist id remapped where it merged by name.
   const existingClaims = new Set((await db.select({ id: claims.id }).from(claims)).map((r) => r.id));
-  const knownJournalists = new Set([...existingJournalists, ...newJournalists.map((j) => j.id)]);
-  const newClaims = snapshot.claims.filter(
-    (c) => !existingClaims.has(c.id) && knownJournalists.has(c.journalistId),
-  );
+  const newClaims = snapshot.claims
+    .map((c) => ({ ...c, journalistId: journalistIdRemap.get(c.journalistId) ?? c.journalistId }))
+    .filter((c) => !existingClaims.has(c.id) && localJournalistIds.has(c.journalistId));
   if (newClaims.length) {
     await db.insert(claims).values(newClaims);
   }
 
-  const existingTags = new Set((await db.select({ id: tags.id }).from(tags)).map((r) => r.id));
-  const existingTagNames = new Set((await db.select({ name: tags.name }).from(tags)).map((r) => r.name));
-  const newTags = snapshot.tags.filter((t) => !existingTags.has(t.id) && !existingTagNames.has(t.name));
+  // Tags: same id or same (unique) name → same tag; remap link ids accordingly.
+  const localTags = await db.select().from(tags);
+  const localTagIds = new Set(localTags.map((t) => t.id));
+  const localTagIdByName = new Map(localTags.map((t) => [t.name, t.id]));
+  const tagIdRemap = new Map<string, string>();
+  const newTags: typeof snapshot.tags = [];
+  for (const t of snapshot.tags) {
+    if (localTagIds.has(t.id)) {
+      continue;
+    }
+    const idWithSameName = localTagIdByName.get(t.name);
+    if (idWithSameName) {
+      tagIdRemap.set(t.id, idWithSameName);
+      continue;
+    }
+    newTags.push(t);
+    localTagIds.add(t.id);
+    localTagIdByName.set(t.name, t.id);
+  }
   if (newTags.length) {
     await db.insert(tags).values(newTags);
   }
 
+  // Links: remap tag ids, keep only links whose both ends exist, skip dupes.
   const validClaimIds = new Set([...existingClaims, ...newClaims.map((c) => c.id)]);
-  const validTagIds = new Set([...existingTags, ...newTags.map((t) => t.id)]);
-  const candidateLinks = snapshot.claimTags.filter(
-    (link) => validClaimIds.has(link.claimId) && validTagIds.has(link.tagId),
-  );
+  const candidateLinks = snapshot.claimTags
+    .map((l) => ({ claimId: l.claimId, tagId: tagIdRemap.get(l.tagId) ?? l.tagId }))
+    .filter((l) => validClaimIds.has(l.claimId) && localTagIds.has(l.tagId));
   if (candidateLinks.length) {
     const existingLinks = await db
       .select()
       .from(claimTags)
       .where(inArray(claimTags.claimId, [...new Set(candidateLinks.map((l) => l.claimId))]));
     const linkKey = (l: { claimId: string; tagId: string }) => `${l.claimId}:${l.tagId}`;
-    const existingLinkKeys = new Set(existingLinks.map(linkKey));
-    const newLinks = candidateLinks.filter((l) => !existingLinkKeys.has(linkKey(l)));
+    const seenLinks = new Set(existingLinks.map(linkKey));
+    const newLinks = candidateLinks.filter((l) => {
+      if (seenLinks.has(linkKey(l))) {
+        return false;
+      }
+      seenLinks.add(linkKey(l));
+      return true;
+    });
     if (newLinks.length) {
       await db.insert(claimTags).values(newLinks);
     }

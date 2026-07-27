@@ -22,11 +22,14 @@ export async function getJournalist(id: string): Promise<Journalist | undefined>
 export async function createJournalist(input: {
   name: string;
   outlet?: string;
+  /** Already-normalized handle (lowercase, no @) or undefined. */
+  handle?: string;
 }): Promise<Journalist> {
   const row: Journalist = {
     id: newId(),
     name: input.name.trim(),
     outlet: input.outlet?.trim() || null,
+    handle: input.handle ?? null,
     avatarColor: avatarColorFor(input.name.trim()),
     isSeeded: false,
     createdAt: Date.now(),
@@ -38,9 +41,14 @@ export async function createJournalist(input: {
 
 export async function updateJournalist(
   id: string,
-  patch: Partial<Pick<Journalist, 'name' | 'outlet'>>,
+  patch: Partial<Pick<Journalist, 'name' | 'outlet' | 'handle'>>,
 ): Promise<void> {
   await db.update(journalists).set(patch).where(eq(journalists.id, id));
+}
+
+export async function findJournalistByHandle(handle: string): Promise<Journalist | undefined> {
+  const rows = await db.select().from(journalists).where(eq(journalists.handle, handle)).limit(1);
+  return rows[0];
 }
 
 export async function setJournalistArchived(id: string, archived: boolean): Promise<void> {

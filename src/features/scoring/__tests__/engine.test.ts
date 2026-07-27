@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import {
+  computeScorecard,
   computeStats,
   computeStatsByJournalist,
   currentStreak,
@@ -180,6 +181,51 @@ describe('computeStats / computeStatsByJournalist', () => {
     expect(map.get('a')?.resolvedCount).toBe(2);
     expect(map.get('a')!.score).toBeGreaterThan(map.get('b')!.score);
     expect(map.get('missing')).toBeUndefined();
+  });
+});
+
+describe('computeScorecard', () => {
+  test('empty input yields a zeroed card', () => {
+    const card = computeScorecard([], NOW);
+    expect(card.total).toBe(0);
+    expect(card.correct).toBe(0);
+    expect(card.recent.total).toBe(0);
+  });
+
+  test('tallies outcomes with partial as half credit', () => {
+    const card = computeScorecard(
+      [claim('true'), claim('true'), claim('partial'), claim('false')],
+      NOW,
+    );
+    expect(card).toMatchObject({ trueCount: 2, partialCount: 1, falseCount: 1, total: 4 });
+    expect(card.correct).toBe(2.5);
+  });
+
+  test('recent window only counts claims inside 365 days', () => {
+    const card = computeScorecard(
+      [
+        claim('true', { claimedAt: NOW - 10 * DAY }),
+        claim('false', { claimedAt: NOW - 400 * DAY }),
+      ],
+      NOW,
+    );
+    expect(card.total).toBe(2);
+    expect(card.recent.total).toBe(1);
+    expect(card.recent.correct).toBe(1);
+  });
+
+  test('groups by confidence tier', () => {
+    const card = computeScorecard(
+      [
+        claim('true', { confidence: 3 }),
+        claim('false', { confidence: 3 }),
+        claim('true', { confidence: 1 }),
+      ],
+      NOW,
+    );
+    expect(card.byConfidence[3]).toEqual({ correct: 1, total: 2 });
+    expect(card.byConfidence[1]).toEqual({ correct: 1, total: 1 });
+    expect(card.byConfidence[2]).toEqual({ correct: 0, total: 0 });
   });
 });
 

@@ -7,6 +7,7 @@ import { useCreateClaim } from '@/features/claims/hooks';
 import { useClaimDraftStore } from '@/features/claims/store';
 import { SuggestionList } from '@/features/football/components';
 import { usePlayerSearch, useTeamSearch } from '@/features/football/hooks';
+import { failureReasonOf } from '@/features/football/types';
 import { JournalistAvatar } from '@/features/journalists/components/JournalistAvatar';
 import { useJournalists } from '@/features/journalists/hooks';
 import { CONFIDENCE_LEVELS } from '@/db/schema';
@@ -180,17 +181,13 @@ export function AddClaimWizard() {
                 autoCapitalize="words"
               />
               <SuggestionList
-                suggestions={
-                  playerSearch.data?.ok
-                    ? playerSearch.data.data.map((p) => ({
-                        id: p.player.id,
-                        title: p.player.name,
-                        subtitle: p.player.nationality ?? undefined,
-                      }))
-                    : []
-                }
+                suggestions={(playerSearch.data ?? []).map((p) => ({
+                  id: p.player.id,
+                  title: p.player.name,
+                  subtitle: p.player.nationality ?? undefined,
+                }))}
                 isFetching={playerSearch.isFetching}
-                failure={playerSearch.data?.ok === false ? playerSearch.data.reason : undefined}
+                failure={failureReasonOf(playerSearch.error)}
                 onSelect={(s) => patchDraft({ playerName: s.title, playerApiId: s.id })}
               />
             </View>
@@ -203,17 +200,13 @@ export function AddClaimWizard() {
                 autoCapitalize="words"
               />
               <SuggestionList
-                suggestions={
-                  fromClubSearch.data?.ok
-                    ? fromClubSearch.data.data.map((t) => ({
-                        id: t.team.id,
-                        title: t.team.name,
-                        subtitle: t.team.country ?? undefined,
-                      }))
-                    : []
-                }
+                suggestions={(fromClubSearch.data ?? []).map((t) => ({
+                  id: t.team.id,
+                  title: t.team.name,
+                  subtitle: t.team.country ?? undefined,
+                }))}
                 isFetching={fromClubSearch.isFetching}
-                failure={fromClubSearch.data?.ok === false ? fromClubSearch.data.reason : undefined}
+                failure={failureReasonOf(fromClubSearch.error)}
                 onSelect={(s) => patchDraft({ fromClubName: s.title, fromClubApiId: s.id })}
               />
             </View>
@@ -226,17 +219,13 @@ export function AddClaimWizard() {
                 autoCapitalize="words"
               />
               <SuggestionList
-                suggestions={
-                  toClubSearch.data?.ok
-                    ? toClubSearch.data.data.map((t) => ({
-                        id: t.team.id,
-                        title: t.team.name,
-                        subtitle: t.team.country ?? undefined,
-                      }))
-                    : []
-                }
+                suggestions={(toClubSearch.data ?? []).map((t) => ({
+                  id: t.team.id,
+                  title: t.team.name,
+                  subtitle: t.team.country ?? undefined,
+                }))}
                 isFetching={toClubSearch.isFetching}
-                failure={toClubSearch.data?.ok === false ? toClubSearch.data.reason : undefined}
+                failure={failureReasonOf(toClubSearch.error)}
                 onSelect={(s) => patchDraft({ toClubName: s.title, toClubApiId: s.id })}
               />
             </View>

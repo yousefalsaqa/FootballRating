@@ -4,10 +4,12 @@ import { Alert, View } from 'react-native';
 import { ClaimRow } from '@/features/claims/components';
 import { useClaims } from '@/features/claims/hooks';
 import { JournalistAvatar } from '@/features/journalists/components/JournalistAvatar';
+import { JournalistScorecard } from '@/features/journalists/components/JournalistScorecard';
 import { TierBadge } from '@/features/journalists/components/TierBadge';
 import {
   useDeleteJournalist,
   useJournalist,
+  useJournalistScorecard,
   useJournalistStats,
   useSetJournalistArchived,
 } from '@/features/journalists/hooks';
@@ -35,6 +37,7 @@ export function JournalistDetailScreen() {
   const { space } = useTheme();
   const journalistQuery = useJournalist(id);
   const stats = useJournalistStats(id);
+  const scorecard = useJournalistScorecard(id);
   const claimsQuery = useClaims({ journalistId: id });
   const archiveMutation = useSetJournalistArchived();
   const deleteMutation = useDeleteJournalist();
@@ -89,6 +92,11 @@ export function JournalistDetailScreen() {
               {journalist.outlet}
             </Text>
           ) : null}
+          {journalist.handle ? (
+            <Text variant="secondary" color="inkTertiary">
+              @{journalist.handle}
+            </Text>
+          ) : null}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.lg }}>
           <Text variant="score">{formatScore(stats.score)}</Text>
@@ -108,6 +116,12 @@ export function JournalistDetailScreen() {
           <StatCell label="Streak" value={String(stats.streak)} />
         </View>
       </Card>
+
+      {scorecard ? (
+        <View style={{ marginTop: space.xl }}>
+          <JournalistScorecard scorecard={scorecard} />
+        </View>
+      ) : null}
 
       <View style={{ gap: space.md, marginTop: space.xl }}>
         <Text variant="caption" color="inkTertiary">
