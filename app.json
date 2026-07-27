@@ -15,9 +15,8 @@
     "android": {
       "package": "com.yousef.journalistrater",
       "adaptiveIcon": {
-        "backgroundColor": "#FAFAF9",
+        "backgroundColor": "#111110",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false
@@ -32,7 +31,8 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 96,
           "dark": {
-            "backgroundColor": "#0E0E0D"
+            "backgroundColor": "#0E0E0D",
+            "image": "./assets/images/splash-icon-dark.png"
           }
         }
       ]

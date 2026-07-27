@@ -1,14 +1,14 @@
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, View } from 'react-native';
+import { Alert, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Claim } from '@/db/schema';
 import { ClaimRow } from '@/features/claims/components';
 import { useClaims, useResolveClaim } from '@/features/claims/hooks';
 import { useJournalists } from '@/features/journalists/hooks';
-import { EmptyState, Screen, SegmentedControl, Skeleton } from '@/ui/components';
+import { Chip, EmptyState, Screen, SegmentedControl, Skeleton } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
 
 /** Claims tab: pending/resolved lists across all journalists. */
@@ -17,7 +17,8 @@ export function ClaimsScreen() {
   const { space } = useTheme();
   const insets = useSafeAreaInsets();
   const [status, setStatus] = useState<'pending' | 'resolved'>('pending');
-  const claimsQuery = useClaims({ status });
+  const [journalistFilter, setJournalistFilter] = useState<string | null>(null);
+  const claimsQuery = useClaims({ status, journalistId: journalistFilter ?? undefined });
   const journalistsQuery = useJournalists();
   const resolveMutation = useResolveClaim();
 
@@ -43,7 +44,7 @@ export function ClaimsScreen() {
 
   return (
     <Screen scroll={false}>
-      <View style={{ paddingVertical: space.lg }}>
+      <View style={{ paddingVertical: space.lg, gap: space.md }}>
         <SegmentedControl
           options={[
             { value: 'pending', label: 'Pending' },
@@ -52,6 +53,27 @@ export function ClaimsScreen() {
           value={status}
           onChange={setStatus}
         />
+        {(journalistsQuery.data?.length ?? 0) > 1 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: space.sm }}
+          >
+            <Chip
+              label="All"
+              selected={journalistFilter === null}
+              onPress={() => setJournalistFilter(null)}
+            />
+            {(journalistsQuery.data ?? []).map((j) => (
+              <Chip
+                key={j.id}
+                label={j.name}
+                selected={journalistFilter === j.id}
+                onPress={() => setJournalistFilter(journalistFilter === j.id ? null : j.id)}
+              />
+            ))}
+          </ScrollView>
+        ) : null}
       </View>
       {claimsQuery.isLoading ? (
         <View style={{ gap: space.md }}>

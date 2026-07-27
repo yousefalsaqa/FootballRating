@@ -1,10 +1,13 @@
+import { useQueryClient } from '@tanstack/react-query';
 import Constants from 'expo-constants';
-import { View } from 'react-native';
+import { useState } from 'react';
+import { Alert, View } from 'react-native';
 
 import { DAILY_BUDGET } from '@/features/football/cache';
 import { useApiUsage } from '@/features/football/hooks';
+import { exportDataToFile, importDataFromFile } from '@/features/settings/data-export';
 import { useSettingsStore } from '@/features/settings/store';
-import { Card, KeyValueRow, Screen, SegmentedControl, Text } from '@/ui/components';
+import { Button, Card, KeyValueRow, Screen, SegmentedControl, Text } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
 
 /** Settings tab: appearance and app info. Data controls arrive with export. */
@@ -12,6 +15,39 @@ export function SettingsScreen() {
   const { space } = useTheme();
   const { themePreference, setThemePreference } = useSettingsStore();
   const usageQuery = useApiUsage();
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState(false);
+
+  const runExport = async () => {
+    setBusy(true);
+    try {
+      await exportDataToFile(Date.now());
+    } catch {
+      Alert.alert('Export failed', 'Could not create the export file.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runImport = async () => {
+    setBusy(true);
+    try {
+      const outcome = await importDataFromFile();
+      if (outcome.status === 'invalid') {
+        Alert.alert('Import failed', 'That file is not a valid Journalist Rater export.');
+      } else if (outcome.status === 'imported') {
+        void queryClient.invalidateQueries();
+        Alert.alert(
+          'Import complete',
+          `Added ${outcome.result.journalists} journalists and ${outcome.result.claims} claims.`,
+        );
+      }
+    } catch {
+      Alert.alert('Import failed', 'Could not read that file.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <Screen>
@@ -42,6 +78,14 @@ export function SettingsScreen() {
             />
             <KeyValueRow label="Provider" value="api-sports.io" />
           </Card>
+        </View>
+
+        <View style={{ gap: space.sm }}>
+          <Text variant="caption" color="inkTertiary">
+            Data
+          </Text>
+          <Button label="Export data" variant="secondary" onPress={() => void runExport()} disabled={busy} />
+          <Button label="Import data" variant="secondary" onPress={() => void runImport()} disabled={busy} />
         </View>
 
         <View style={{ gap: space.sm }}>

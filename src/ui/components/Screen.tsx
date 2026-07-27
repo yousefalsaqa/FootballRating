@@ -37,6 +37,7 @@ export function Screen({ children, scroll = true, fabClearance, style, edgeToEdg
       style={base}
       contentContainerStyle={[padding, { paddingBottom: bottomPad }, style]}
       keyboardShouldPersistTaps="handled"
+      automaticallyAdjustKeyboardInsets
       showsVerticalScrollIndicator={false}
     >
       {children}
