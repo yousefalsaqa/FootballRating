@@ -13,8 +13,14 @@ import { useTheme } from '@/ui/theme';
 /** Settings tab: appearance and app info. Data controls arrive with export. */
 export function SettingsScreen() {
   const { space } = useTheme();
-  const { themePreference, setThemePreference, autoFileIncoming, setAutoFileIncoming } =
-    useSettingsStore();
+  const {
+    themePreference,
+    setThemePreference,
+    autoFileIncoming,
+    setAutoFileIncoming,
+    autoResolve,
+    setAutoResolve,
+  } = useSettingsStore();
   const usageQuery = useApiUsage();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
@@ -83,6 +89,19 @@ export function SettingsScreen() {
           <Text variant="secondary" color="inkTertiary">
             Auto-file adds every incoming wire report to the record as a developing story. Review
             first holds them in the Incoming tab; unreviewed reports expire after 72 hours.
+          </Text>
+          <SegmentedControl
+            options={[
+              { value: 'auto', label: 'Auto-resolve outcomes' },
+              { value: 'manual', label: 'Resolve manually' },
+            ]}
+            value={autoResolve ? 'auto' : 'manual'}
+            onChange={(value) => setAutoResolve(value === 'auto')}
+          />
+          <Text variant="secondary" color="inkTertiary">
+            Auto-resolve checks press coverage of developing stories twice a day and records a
+            verdict only when the evidence is conclusive. Unclear stories stay open, and you can
+            always overrule a verdict from the report page.
           </Text>
         </View>
 

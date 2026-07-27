@@ -5,6 +5,7 @@ import type { ThemePreference } from '@/ui/theme';
 
 const THEME_KEY = 'settings.themePreference';
 const AUTO_FILE_KEY = 'settings.autoFileIncoming';
+const AUTO_RESOLVE_KEY = 'settings.autoResolve';
 
 interface SettingsState {
   themePreference: ThemePreference;
@@ -12,6 +13,9 @@ interface SettingsState {
   /** Automatically file incoming wire reports into the record (default on). */
   autoFileIncoming: boolean;
   setAutoFileIncoming: (enabled: boolean) => void;
+  /** Automatically record outcomes when press coverage is conclusive (default on). */
+  autoResolve: boolean;
+  setAutoResolve: (enabled: boolean) => void;
 }
 
 function loadThemePreference(): ThemePreference {
@@ -30,5 +34,10 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setAutoFileIncoming: (enabled) => {
     kv.setItemSync(AUTO_FILE_KEY, enabled ? 'on' : 'off');
     set({ autoFileIncoming: enabled });
+  },
+  autoResolve: kv.getItemSync(AUTO_RESOLVE_KEY) !== 'off',
+  setAutoResolve: (enabled) => {
+    kv.setItemSync(AUTO_RESOLVE_KEY, enabled ? 'on' : 'off');
+    set({ autoResolve: enabled });
   },
 }));

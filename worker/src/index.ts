@@ -181,8 +181,8 @@ Reply with ONLY a JSON array (no prose). For each item that IS a claim, include:
 }
 Omit items that are not claims. If unsure, omit.`;
 
-/** Runs the extraction prompt on Claude (if a key is set) or free Workers AI. */
-async function runModel(env: Env, userContent: string): Promise<string> {
+/** Runs a prompt on Claude (if a key is set) or free Workers AI. */
+async function runModelWith(env: Env, systemPrompt: string, userContent: string): Promise<string> {
   if (env.ANTHROPIC_API_KEY) {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -194,7 +194,7 @@ async function runModel(env: Env, userContent: string): Promise<string> {
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 2000,
-        system: EXTRACTION_PROMPT,
+        system: systemPrompt,
         messages: [{ role: 'user', content: userContent }],
       }),
     });
@@ -206,7 +206,7 @@ async function runModel(env: Env, userContent: string): Promise<string> {
   }
   const result = await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
     messages: [
-      { role: 'system', content: EXTRACTION_PROMPT },
+      { role: 'system', content: systemPrompt },
       { role: 'user', content: userContent },
     ],
     max_tokens: 2000,
@@ -227,7 +227,7 @@ async function extractClaims(env: Env, items: FeedItem[]): Promise<ClaimDraft[]>
   }));
   let text: string;
   try {
-    text = await runModel(env, JSON.stringify(payload));
+    text = await runModelWith(env, EXTRACTION_PROMPT, JSON.stringify(payload));
   } catch (error) {
     console.error('Extraction model failed', error);
     return [];
@@ -274,6 +274,77 @@ async function extractClaims(env: Env, items: FeedItem[]): Promise<ClaimDraft[]>
   return drafts;
 }
 
+interface ResolveRequestClaim {
+  id: string;
+  headline: string;
+  playerName: string;
+  toClubName: string;
+  fromClubName?: string | null;
+}
+
+const RESOLUTION_PROMPT = `You judge the outcomes of football transfer claims for a reliability tracker.
+
+Input: a JSON array of claims, each with {id, claim, evidence} where evidence is recent news headlines about that player/club.
+
+For each claim decide the outcome STRICTLY from the evidence:
+- "true": the evidence clearly shows the reported move/agreement was completed (official, unveiled, medical done, deal announced).
+- "false": the evidence clearly shows it collapsed, was rejected and abandoned, or the player verifiably moved elsewhere / stayed put against the claim.
+- "partial": the essentials happened but materially different (different fee structure reported as decisive, loan instead of transfer, etc).
+- "unknown": evidence is insufficient, mixed, or the story is clearly still in progress. WHEN IN DOUBT, ANSWER "unknown" — a wrong verdict is far worse than no verdict.
+
+Reply with ONLY a JSON array: [{"id": string, "outcome": "true"|"partial"|"false"|"unknown"}].`;
+
+const MAX_RESOLVE_CLAIMS = 5;
+const RESOLVE_PARSED_BLOCKS = 15;
+const RESOLVE_EVIDENCE_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+
+/** Gathers headline evidence and asks the model to rule on pending claims. */
+async function resolveClaims(
+  env: Env,
+  requested: ResolveRequestClaim[],
+): Promise<{ id: string; outcome: string }[]> {
+  const batch = requested.slice(0, MAX_RESOLVE_CLAIMS);
+  const now = Date.now();
+  const payload: { id: string; claim: string; evidence: string[] }[] = [];
+  for (const claim of batch) {
+    let evidence: string[] = [];
+    try {
+      const query = `${claim.playerName} ${claim.toClubName}`;
+      const response = await fetch(
+        `https://www.bing.com/news/search?q=${encodeURIComponent(query)}&format=rss`,
+        { headers: FEED_HEADERS },
+      );
+      if (response.ok) {
+        const xml = await response.text();
+        evidence = parseRssItems(xml)
+          .slice(0, RESOLVE_PARSED_BLOCKS)
+          .filter((i) => now - i.pubDate < RESOLVE_EVIDENCE_AGE_MS)
+          .map((i) => i.title);
+      }
+    } catch (error) {
+      console.error(`Evidence fetch failed for ${claim.playerName}`, error);
+    }
+    payload.push({ id: claim.id, claim: claim.headline, evidence });
+  }
+  let text: string;
+  try {
+    text = await runModelWith(env, RESOLUTION_PROMPT, JSON.stringify(payload));
+  } catch (error) {
+    console.error('Resolution model failed', error);
+    return [];
+  }
+  const arrayMatch = text.match(/\[[\s\S]*\]/);
+  try {
+    const parsed = JSON.parse(arrayMatch ? arrayMatch[0] : text) as { id?: string; outcome?: string }[];
+    return parsed
+      .filter((v) => typeof v.id === 'string' && ['true', 'partial', 'false', 'unknown'].includes(v.outcome ?? ''))
+      .map((v) => ({ id: v.id as string, outcome: v.outcome as string }));
+  } catch {
+    console.error('Unparseable resolution output', text.slice(0, 200));
+    return [];
+  }
+}
+
 async function runIngest(env: Env): Promise<void> {
   const now = Date.now();
   const items = await collectFreshItems(env, now);
@@ -307,7 +378,20 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: CORS_HEADERS });
+      return new Response(null, {
+        headers: { ...CORS_HEADERS, 'Access-Control-Allow-Headers': 'content-type' },
+      });
+    }
+    // Outcome check for pending claims (max 5 per call).
+    if (url.pathname === '/resolve' && request.method === 'POST') {
+      let body: { claims?: ResolveRequestClaim[] };
+      try {
+        body = (await request.json()) as { claims?: ResolveRequestClaim[] };
+      } catch {
+        return new Response(JSON.stringify({ verdicts: [] }), { headers: CORS_HEADERS });
+      }
+      const verdicts = await resolveClaims(env, body.claims ?? []);
+      return new Response(JSON.stringify({ verdicts }), { headers: CORS_HEADERS });
     }
     if (url.pathname === '/claims') {
       return new Response(JSON.stringify({ claims: await listDrafts(env) }), {

@@ -60,6 +60,30 @@ export function extractHandleFromUrl(text: string): string | null {
   return null;
 }
 
+/**
+ * True when the text is a supported social URL even if no author handle could
+ * be extracted (e.g. instagram.com/p/<post> — IG post links omit the author).
+ */
+export function isSocialUrl(text: string): boolean {
+  return /(?:x\.com|twitter\.com|instagram\.com|snapchat\.com)\//i.test(text.trim());
+}
+
+/** Unwraps Bing News redirect links to the real article URL. */
+export function normalizeSourceUrl(link: string): string {
+  try {
+    const parsed = new URL(link);
+    if (parsed.hostname.endsWith('bing.com')) {
+      const real = parsed.searchParams.get('url');
+      if (real) {
+        return decodeURIComponent(real);
+      }
+    }
+  } catch {
+    // keep original
+  }
+  return link;
+}
+
 /** Normalizes user-entered handles: strips @, spaces, lowercases. */
 export function normalizeHandle(input: string): string | null {
   const handle = input.trim().replace(/^@/, '').toLowerCase();

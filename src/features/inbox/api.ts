@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { normalizeSourceUrl } from '@/lib/links';
+
 /**
  * Client for the ingest worker (see worker/). Separate service from the
  * football API — this is our own endpoint, no budget/caching layer needed.
@@ -27,20 +29,41 @@ export function ingestUrl(): string | undefined {
   return process.env.EXPO_PUBLIC_INGEST_URL || undefined;
 }
 
-/** Older drafts may still carry Bing redirect links — unwrap to the article. */
-export function normalizeSourceUrl(link: string): string {
-  try {
-    const parsed = new URL(link);
-    if (parsed.hostname.endsWith('bing.com')) {
-      const real = parsed.searchParams.get('url');
-      if (real) {
-        return decodeURIComponent(real);
-      }
-    }
-  } catch {
-    // keep original
+const verdictSchema = z.object({
+  verdicts: z.array(
+    z.object({
+      id: z.string(),
+      outcome: z.enum(['true', 'partial', 'false', 'unknown']),
+    }),
+  ),
+});
+
+export interface ResolutionRequest {
+  id: string;
+  headline: string;
+  playerName: string;
+  toClubName: string;
+  fromClubName?: string | null;
+}
+
+/** Asks the worker to judge pending claims from recent coverage (max 5). */
+export async function requestResolutions(
+  claims: ResolutionRequest[],
+): Promise<{ id: string; outcome: 'true' | 'partial' | 'false' | 'unknown' }[]> {
+  const base = ingestUrl();
+  if (!base || claims.length === 0) {
+    return [];
   }
-  return link;
+  const response = await fetch(`${base.replace(/\/$/, '')}/resolve`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ claims }),
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!response.ok) {
+    throw new Error(`Resolve request failed: ${response.status}`);
+  }
+  return verdictSchema.parse(await response.json()).verdicts;
 }
 
 export async function fetchIncomingClaims(): Promise<IncomingClaim[]> {

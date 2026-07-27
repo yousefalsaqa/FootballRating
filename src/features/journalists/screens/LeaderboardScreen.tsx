@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TierBadge } from '@/features/journalists/components/TierBadge';
 import { useRankedJournalists, type RankedJournalist } from '@/features/journalists/hooks';
 import { formatDate, formatMovement, formatScore } from '@/lib/format';
-import { extractHandleFromUrl } from '@/lib/links';
+import { extractHandleFromUrl, isSocialUrl } from '@/lib/links';
 import { Divider, EmptyState, Screen, SearchInput, Skeleton, Text } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
 
@@ -189,6 +189,8 @@ export function LeaderboardScreen() {
   const handleMatch = pastedHandle
     ? (data ?? []).find((j) => j.handle === pastedHandle)
     : undefined;
+  /** A social link we can't read the author from (e.g. instagram.com/p/…). */
+  const unreadableSocialLink = !pastedHandle && isSocialUrl(search);
 
   const allRows = useMemo<RankedRow[]>(
     () => (data ?? []).map((journalist, index) => ({ journalist, rank: index + 1 })),
@@ -197,7 +199,7 @@ export function LeaderboardScreen() {
 
   const searching = searchOpen && search.trim().length > 0;
   const filteredRows = useMemo<RankedRow[]>(() => {
-    if (!searching || pastedHandle) {
+    if (!searching || pastedHandle || isSocialUrl(search)) {
       return allRows;
     }
     const query = search.trim().toLowerCase();
@@ -302,6 +304,14 @@ export function LeaderboardScreen() {
             autoFocus
             accessibilityLabel="Search journalists or paste a social link"
           />
+          {unreadableSocialLink ? (
+            <View style={{ paddingVertical: space.md }}>
+              <Text variant="secondary" color="inkSecondary">
+                Post links don’t name their author. Paste the reporter’s profile link instead —
+                e.g. instagram.com/fabrizioromano or x.com/FabrizioRomano.
+              </Text>
+            </View>
+          ) : null}
           {pastedHandle ? (
             handleMatch ? (
               <Pressable
@@ -455,7 +465,7 @@ export function LeaderboardScreen() {
           <Skeleton height={56} />
           <Skeleton height={56} />
         </View>
-      ) : filteredRows.length === 0 && !pastedHandle ? (
+      ) : filteredRows.length === 0 && !pastedHandle && !unreadableSocialLink ? (
         <View>
           {Masthead}
           <EmptyState

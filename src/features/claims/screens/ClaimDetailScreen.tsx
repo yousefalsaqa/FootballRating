@@ -19,6 +19,7 @@ import { scoreImpact } from '@/features/scoring/engine';
 import { windowLabel } from '@/lib/dates';
 import { formatDate, formatDelta } from '@/lib/format';
 import { successTick } from '@/lib/haptics';
+import { normalizeSourceUrl } from '@/lib/links';
 import { Button, Card, Divider, EmptyState, KeyValueRow, Screen, Skeleton, Text } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
 
@@ -149,7 +150,7 @@ export function ClaimDetailScreen() {
           <Button
             label="View source"
             variant="secondary"
-            onPress={() => void Linking.openURL(claim.sourceUrl as string)}
+            onPress={() => void Linking.openURL(normalizeSourceUrl(claim.sourceUrl as string))}
           />
         ) : null}
 
