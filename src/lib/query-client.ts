@@ -35,6 +35,9 @@ export const queryKeys = {
   tags: {
     all: ['tags'] as const,
   },
+  inbox: {
+    all: ['inbox'] as const,
+  },
   football: {
     playerSearch: (query: string) => ['football', 'players', query.toLowerCase()] as const,
     teamSearch: (query: string) => ['football', 'teams', query.toLowerCase()] as const,

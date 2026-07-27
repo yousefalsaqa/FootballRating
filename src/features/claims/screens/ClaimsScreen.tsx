@@ -7,6 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Claim } from '@/db/schema';
 import { ClaimRow } from '@/features/claims/components';
 import { useClaims, useResolveClaim } from '@/features/claims/hooks';
+import { IncomingRow } from '@/features/inbox/components';
+import { useAcceptIncoming, useInboxEnabled, useIncomingClaims } from '@/features/inbox/hooks';
 import { useJournalists } from '@/features/journalists/hooks';
 import { Chip, Divider, EmptyState, Screen, SegmentedControl, Skeleton } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
@@ -16,11 +18,15 @@ export function ClaimsScreen() {
   const router = useRouter();
   const { space } = useTheme();
   const insets = useSafeAreaInsets();
-  const [status, setStatus] = useState<'pending' | 'resolved'>('pending');
+  const inboxEnabled = useInboxEnabled();
+  const [section, setSection] = useState<'incoming' | 'pending' | 'resolved'>('pending');
+  const status = section === 'resolved' ? 'resolved' : 'pending';
   const [journalistFilter, setJournalistFilter] = useState<string | null>(null);
   const claimsQuery = useClaims({ status, journalistId: journalistFilter ?? undefined });
   const journalistsQuery = useJournalists();
   const resolveMutation = useResolveClaim();
+  const inbox = useIncomingClaims();
+  const acceptIncoming = useAcceptIncoming(inbox.dismiss);
 
   const journalistNames = useMemo(() => {
     const map = new Map<string, string>();
@@ -46,14 +52,22 @@ export function ClaimsScreen() {
     <Screen scroll={false} edgeToEdge>
       <View style={{ paddingVertical: space.md, paddingHorizontal: space.lg, gap: space.md }}>
         <SegmentedControl
-          options={[
-            { value: 'pending', label: 'Pending' },
-            { value: 'resolved', label: 'Resolved' },
-          ]}
-          value={status}
-          onChange={setStatus}
+          options={
+            inboxEnabled
+              ? ([
+                  { value: 'incoming', label: `Incoming${inbox.drafts.length ? ` (${inbox.drafts.length})` : ''}` },
+                  { value: 'pending', label: 'Pending' },
+                  { value: 'resolved', label: 'Resolved' },
+                ] as const)
+              : ([
+                  { value: 'pending', label: 'Pending' },
+                  { value: 'resolved', label: 'Resolved' },
+                ] as const)
+          }
+          value={section}
+          onChange={setSection}
         />
-        {(journalistsQuery.data?.length ?? 0) > 1 ? (
+        {section !== 'incoming' && (journalistsQuery.data?.length ?? 0) > 1 ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -75,7 +89,33 @@ export function ClaimsScreen() {
           </ScrollView>
         ) : null}
       </View>
-      {claimsQuery.isLoading ? (
+      {section === 'incoming' ? (
+        inbox.drafts.length === 0 ? (
+          <EmptyState
+            title={inbox.isError ? 'Wire unavailable' : 'Nothing on the wire'}
+            message={
+              inbox.isError
+                ? 'Could not reach the ingest service — check your connection.'
+                : 'New claims from tracked journalists appear here within minutes of being reported.'
+            }
+          />
+        ) : (
+          <FlashList
+            data={inbox.drafts}
+            keyExtractor={(draft) => draft.id}
+            contentContainerStyle={{ paddingBottom: insets.bottom + space.xl }}
+            ItemSeparatorComponent={() => <Divider />}
+            renderItem={({ item }) => (
+              <IncomingRow
+                draft={item}
+                journalistName={journalistNames.get(item.journalistId)}
+                onAccept={() => acceptIncoming(item)}
+                onDismiss={() => inbox.dismiss(item.id)}
+              />
+            )}
+          />
+        )
+      ) : claimsQuery.isLoading ? (
         <View style={{ gap: space.md, paddingHorizontal: space.lg }}>
           <Skeleton height={96} />
           <Skeleton height={96} />

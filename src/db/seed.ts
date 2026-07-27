@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull, like } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { appMeta, claims, journalists, type ClaimOutcome, type Confidence } from '@/db/schema';
+import seedJournalists from '@/db/seed-journalists.json';
 import { avatarColorFor } from '@/lib/constants';
 import { newId } from '@/lib/id';
 
@@ -12,24 +13,10 @@ const DEMO_CLAIMS_V2_FLAG = 'seeded.demo-claims.v2';
  * Seed ids are FIXED strings (not per-install UUIDs) so exports from one
  * device merge cleanly into another instead of duplicating the seeded rows.
  * Seeding is idempotent by id: new entries added here reach existing installs.
+ * The roster lives in seed-journalists.json — shared with the ingest worker.
  */
-const SEED_JOURNALISTS: { id: string; name: string; outlet: string; handle: string }[] = [
-  { id: 'seed-fabrizio-romano', name: 'Fabrizio Romano', outlet: 'Independent', handle: 'fabrizioromano' },
-  { id: 'seed-david-ornstein', name: 'David Ornstein', outlet: 'The Athletic', handle: 'david_ornstein' },
-  { id: 'seed-florian-plettenberg', name: 'Florian Plettenberg', outlet: 'Sky Sport DE', handle: 'plettigoal' },
-  { id: 'seed-gianluca-di-marzio', name: 'Gianluca Di Marzio', outlet: 'Sky Sport IT', handle: 'dimarzio' },
-  { id: 'seed-christian-falk', name: 'Christian Falk', outlet: 'BILD', handle: 'cfbayern' },
-  { id: 'seed-matteo-moretto', name: 'Matteo Moretto', outlet: 'Relevo', handle: 'mattemoretto' },
-  { id: 'seed-ben-jacobs', name: 'Ben Jacobs', outlet: 'talkSPORT', handle: 'jacobsben' },
-  { id: 'seed-alfredo-pedulla', name: 'Alfredo Pedullà', outlet: 'Sportitalia', handle: 'alfredopedulla' },
-  { id: 'seed-nicolo-schira', name: 'Nicolò Schira', outlet: 'Independent', handle: 'nicoschira' },
-  { id: 'seed-dharmesh-sheth', name: 'Dharmesh Sheth', outlet: 'Sky Sports', handle: 'skysports_sheth' },
-  { id: 'seed-santi-aouna', name: 'Santi Aouna', outlet: 'Foot Mercato', handle: 'santi_j_fm' },
-  { id: 'seed-sacha-tavolieri', name: 'Sacha Tavolieri', outlet: 'Sky Sport CH', handle: 'sachatavolieri' },
-  { id: 'seed-mike-mcgrath', name: 'Mike McGrath', outlet: 'The Telegraph', handle: 'mcgrathmike' },
-  { id: 'seed-simon-stone', name: 'Simon Stone', outlet: 'BBC Sport', handle: 'sistoney67' },
-  { id: 'seed-cesar-luis-merlo', name: 'César Luis Merlo', outlet: 'TyC Sports', handle: 'clmerlo' },
-];
+const SEED_JOURNALISTS: { id: string; name: string; outlet: string; handle: string }[] =
+  seedJournalists;
 
 interface SeedClaim {
   journalistId: string;

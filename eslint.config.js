@@ -4,7 +4,8 @@ const expoConfig = require('eslint-config-expo/flat');
 module.exports = defineConfig([
   expoConfig,
   {
-    ignores: ['dist/*', 'src/db/migrations/*'],
+    // worker/ is a separate Cloudflare deployment with its own type environment.
+    ignores: ['dist/*', 'src/db/migrations/*', 'worker/**'],
   },
   {
     // Test files: jest.mock factories legitimately use require() above imports.
