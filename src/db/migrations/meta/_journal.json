@@ -15,6 +15,20 @@
       "when": 1785125631630,
       "tag": "0001_cultured_jetstream",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785167083420,
+      "tag": "0002_brown_gravity",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1785167406598,
+      "tag": "0003_fixed_old_lace",
+      "breakpoints": true
     }
   ]
 }

@@ -219,3 +219,28 @@ describe('ledger snapshot merge', () => {
     await deleteJournalist(j.id);
   });
 });
+
+  test('a newer reopen un-resolves the same-id claim and old verdicts cannot resurrect it', async () => {
+    const { exportSnapshot, importSnapshot } = require('@/features/settings/repository');
+    const j = await createJournalist({ name: 'Reopen Reporter' });
+    const claim = await createClaim(claimInput(j.id, { transferWindow: '2026-summer' }));
+    await resolveClaim(claim.id, 'false');
+    const resolvedSnapshot = await exportSnapshot(Date.now());
+
+    // Another device reopened it AFTER the verdict.
+    const remote = {
+      ...resolvedSnapshot,
+      claims: resolvedSnapshot.claims.map((c: { id: string }) =>
+        c.id === claim.id
+          ? { ...c, status: 'pending', outcome: null, resolvedAt: null, reopenedAt: Date.now() + 1000 }
+          : c,
+      ),
+    };
+    expect((await importSnapshot(remote)).resolutions).toBe(1);
+    expect((await getClaim(claim.id))?.status).toBe('pending');
+
+    // Re-importing the older resolved snapshot must NOT bring the verdict back.
+    await importSnapshot(resolvedSnapshot);
+    expect((await getClaim(claim.id))?.status).toBe('pending');
+    await deleteJournalist(j.id);
+  });

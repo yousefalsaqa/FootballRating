@@ -46,14 +46,40 @@ function hashString(text: string): string {
 
 const NOTHING_PULLED: ImportResult = { journalists: 0, claims: 0, resolutions: 0 };
 
-/** One full pull → merge → push cycle. Safe to call repeatedly. */
+/**
+ * Checks a passcode against the ledger. true = accepted (or the ledger is
+ * unclaimed and this passcode would claim it), false = wrong, null = network.
+ */
+export async function verifyLedgerKey(key: string): Promise<boolean | null> {
+  const base = ingestUrl()?.replace(/\/$/, '');
+  if (!base) {
+    return null;
+  }
+  try {
+    const response = await fetch(`${base}/ledger`, {
+      headers: { 'x-ledger-key': key },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (response.status === 401 || response.status === 403) {
+      return false;
+    }
+    return response.ok ? true : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One sync cycle. Editors (passcode set) do pull → merge → push; readers
+ * (no passcode) just mirror the published ledger — the site is a newspaper.
+ */
 export async function syncLedger(now: number): Promise<SyncOutcome> {
   const base = ingestUrl()?.replace(/\/$/, '');
   const key = kv.getItemSync(SYNC_KEY_KV);
-  if (!base || !key) {
+  if (!base) {
     return { status: 'disabled' };
   }
-  const headers = { 'x-ledger-key': key };
+  const headers: Record<string, string> = key ? { 'x-ledger-key': key } : {};
 
   let pulled = NOTHING_PULLED;
   try {
@@ -75,6 +101,12 @@ export async function syncLedger(now: number): Promise<SyncOutcome> {
   } catch (error) {
     console.error('Ledger pull failed', error);
     return { status: 'error' };
+  }
+
+  // Readers stop here — they never write.
+  if (!key) {
+    kv.setItemSync(LAST_SYNCED_KV, String(now));
+    return { status: 'synced', pulled, pushed: false, at: now };
   }
 
   // Push the merged state back — skipped when nothing changed since the last

@@ -36,6 +36,11 @@ export function IncomingRow({ draft, journalistName, onAccept, onDismiss }: Inco
           {formatDate(draft.reportedAt)}
         </Text>
       </View>
+      {draft.submitted ? (
+        <Text variant="caption" color={draft.needsReview ? 'danger' : 'inkTertiary'}>
+          {draft.needsReview ? 'Reader submission — needs your approval' : 'Reader submission (passed the bot check)'}
+        </Text>
+      ) : null}
       <Text variant="headline" numberOfLines={2}>
         {draft.headline}
       </Text>

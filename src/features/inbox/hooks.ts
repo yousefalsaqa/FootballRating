@@ -16,7 +16,7 @@ import { currentTransferWindow } from '@/lib/dates';
 import { kv } from '@/lib/kv';
 import { queryKeys } from '@/lib/query-client';
 
-export { ingestUrl } from '@/features/inbox/api';
+export { ingestUrl, submitReport, type ReportSubmission } from '@/features/inbox/api';
 
 /** Whether the ingest worker is configured — gates all inbox UI. */
 export function useInboxEnabled(): boolean {
@@ -39,7 +39,9 @@ function draftStoryKey(draft: IncomingClaim): string {
  * earlier one) never reappears on the wire, so auto-file can't duplicate it.
  */
 export function useIncomingClaims() {
-  const enabled = useInboxEnabled();
+  // The wire is editor territory — readers never poll it.
+  const editor = useSettingsStore((s) => s.syncKey !== null);
+  const enabled = useInboxEnabled() && editor;
   const dismissedIds = useInboxStore((s) => s.dismissedIds);
   const dismiss = useInboxStore((s) => s.dismiss);
   const existingQuery = useClaims();
@@ -140,6 +142,11 @@ export function useAutoFileIncoming(): void {
       return;
     }
     for (const draft of drafts) {
+      // Flagged reader submissions wait for the editor; unmatched reporters
+      // can't be filed automatically either.
+      if (draft.needsReview || !draft.journalistId) {
+        continue;
+      }
       if (!processing.current.has(draft.id)) {
         processing.current.add(draft.id);
         accept(draft);
@@ -188,8 +195,9 @@ function loadCheckedMap(): Record<string, number> {
  */
 export function useAutoResolve(): void {
   const autoResolve = useSettingsStore((s) => s.autoResolve);
+  const editor = useSettingsStore((s) => s.syncKey !== null);
   const inboxEnabled = useInboxEnabled();
-  const enabled = autoResolve && inboxEnabled;
+  const enabled = autoResolve && inboxEnabled && editor;
   const pendingQuery = useClaims({ status: 'pending' });
   const resolveMutation = useResolveClaim();
   const running = useRef(false);
@@ -202,6 +210,8 @@ export function useAutoResolve(): void {
     const now = Date.now();
     const checked = loadCheckedMap();
     const due = pending
+      // Reopened claims are the editor's overrule — never re-judge them.
+      .filter((c) => !c.reopenedAt)
       .filter((c) => now - c.claimedAt > MIN_CLAIM_AGE_MS)
       .filter((c) => now - (checked[c.id] ?? 0) > RECHECK_INTERVAL_MS)
       .slice(0, RESOLVE_BATCH_SIZE);
@@ -217,7 +227,11 @@ export function useAutoResolve(): void {
         );
         for (const verdict of verdicts) {
           if (verdict.outcome !== 'unknown') {
-            resolveMutation.mutate({ id: verdict.id, outcome: verdict.outcome });
+            resolveMutation.mutate({
+              id: verdict.id,
+              outcome: verdict.outcome,
+              evidence: { note: verdict.reason, sourceUrl: verdict.evidenceUrl },
+            });
           }
         }
       })
@@ -240,9 +254,13 @@ export function useResolveAllPending() {
   const [running, setRunning] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
 
-  const pending = pendingQuery.data;
+  const pending = useMemo(
+    // Reopened claims are the editor's overrule — the sweep never re-judges them.
+    () => (pendingQuery.data ?? []).filter((c) => !c.reopenedAt),
+    [pendingQuery.data],
+  );
   const run = useCallback(async () => {
-    if (!inboxEnabled || running || !pending?.length) {
+    if (!inboxEnabled || running || !pending.length) {
       return;
     }
     setRunning(true);
@@ -258,7 +276,11 @@ export function useResolveAllPending() {
         );
         for (const verdict of verdicts) {
           if (verdict.outcome !== 'unknown') {
-            resolveMutation.mutate({ id: verdict.id, outcome: verdict.outcome });
+            resolveMutation.mutate({
+              id: verdict.id,
+              outcome: verdict.outcome,
+              evidence: { note: verdict.reason, sourceUrl: verdict.evidenceUrl },
+            });
             ruled += 1;
           }
         }
@@ -276,5 +298,5 @@ export function useResolveAllPending() {
     }
   }, [inboxEnabled, running, pending, resolveMutation]);
 
-  return { run, running, summary, pendingCount: pending?.length ?? 0, enabled: inboxEnabled };
+  return { run, running, summary, pendingCount: pending.length, enabled: inboxEnabled };
 }

@@ -14,6 +14,7 @@ import {
 } from '@/features/claims/hooks';
 import { useTransferCheck } from '@/features/football/hooks';
 import { useJournalist } from '@/features/journalists/hooks';
+import { useEditorMode } from '@/features/settings/hooks';
 import { scoreImpact } from '@/features/scoring/engine';
 import { windowLabel } from '@/lib/dates';
 import { formatDate, formatDelta } from '@/lib/format';
@@ -37,6 +38,7 @@ export function ClaimDetailScreen() {
   const reopenMutation = useReopenClaim();
   const deleteMutation = useDeleteClaim();
   const transferCheck = useTransferCheck();
+  const editor = useEditorMode();
 
   const impact = useMemo(() => {
     if (!claim || claim.status !== 'resolved' || !claim.outcome || !rowsQuery.data) {
@@ -121,6 +123,30 @@ export function ClaimDetailScreen() {
           <VerdictStamp verdict="pending" size="lg" />
         )}
 
+        {claim.status === 'resolved' && (claim.resolutionNote || claim.resolutionSourceUrl) ? (
+          <View style={{ gap: space.xs }}>
+            <Text variant="kicker" color="inkTertiary">
+              Why this verdict
+            </Text>
+            {claim.resolutionNote ? (
+              <Text variant="body" color="inkSecondary">
+                {claim.resolutionNote}
+              </Text>
+            ) : null}
+            {claim.resolutionSourceUrl ? (
+              <Text
+                variant="caption"
+                color="ink"
+                accessibilityRole="link"
+                onPress={() => openExternal(claim.resolutionSourceUrl as string)}
+                style={{ textDecorationLine: 'underline' }}
+              >
+                Read the coverage that decided it →
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
         <View>
           <Divider weight="medium" />
           <View style={{ paddingVertical: space.sm }}>
@@ -154,7 +180,7 @@ export function ClaimDetailScreen() {
           />
         ) : null}
 
-        {claim.status === 'pending' ? (
+        {!editor ? null : claim.status === 'pending' ? (
           <View style={{ gap: space.md }}>
             <Text variant="kicker" color="inkTertiary">
               Record the outcome
@@ -205,7 +231,7 @@ export function ClaimDetailScreen() {
           />
         )}
 
-        <Button label="Delete claim" variant="ghost" onPress={confirmDelete} />
+        {editor ? <Button label="Delete claim" variant="ghost" onPress={confirmDelete} /> : null}
       </View>
     </Screen>
   );

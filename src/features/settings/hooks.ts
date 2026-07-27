@@ -1,10 +1,13 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
 
 import { useSettingsStore } from '@/features/settings/store';
 import { syncLedger, type SyncOutcome } from '@/features/settings/sync';
+import { syncSignal } from '@/lib/sync-signal';
 
-const SYNC_INTERVAL_MS = 10 * 60 * 1000;
+const SYNC_INTERVAL_MS = 90 * 1000;
+const MUTATION_DEBOUNCE_MS = 2_000;
 
 function pulledAnything(outcome: SyncOutcome): boolean {
   return (
@@ -14,9 +17,19 @@ function pulledAnything(outcome: SyncOutcome): boolean {
 }
 
 /**
- * Background cross-device sync: runs a pull→merge→push cycle on launch and
- * every 10 minutes while a ledger passcode is set. Mounted once in the tab
- * layout, next to auto-file/auto-resolve.
+ * Editor mode: this device holds the ledger passcode. Editors see the Desk
+ * and every filing/resolving control; everyone else reads the published
+ * record like a news site.
+ */
+export function useEditorMode(): boolean {
+  return useSettingsStore((s) => s.syncKey !== null);
+}
+
+/**
+ * Reactive ledger loop: editors run pull→merge→push, readers mirror. Fires
+ * on launch, right after any local edit (debounced), whenever the app comes
+ * back to the foreground, and on a 90-second idle heartbeat. Mounted once in
+ * the tab layout, next to auto-file/auto-resolve.
  */
 export function useLedgerSync(): void {
   const syncKey = useSettingsStore((s) => s.syncKey);
@@ -24,9 +37,6 @@ export function useLedgerSync(): void {
   const running = useRef(false);
 
   useEffect(() => {
-    if (!syncKey) {
-      return;
-    }
     let cancelled = false;
     const cycle = async () => {
       if (running.current) {
@@ -46,9 +56,24 @@ export function useLedgerSync(): void {
     };
     void cycle();
     const timer = setInterval(() => void cycle(), SYNC_INTERVAL_MS);
+    // Edits push immediately (debounced so a burst becomes one push).
+    let debounce: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = syncSignal.subscribe(() => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => void cycle(), MUTATION_DEBOUNCE_MS);
+    });
+    // Waking the tab/app pulls right away — no stale ledger after sleep.
+    const appState = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void cycle();
+      }
+    });
     return () => {
       cancelled = true;
       clearInterval(timer);
+      clearTimeout(debounce);
+      unsubscribe();
+      appState.remove();
     };
   }, [syncKey, queryClient]);
 }

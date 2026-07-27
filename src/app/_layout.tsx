@@ -9,7 +9,7 @@ import {
 import { PlayfairDisplay_900Black } from '@expo-google-fonts/playfair-display';
 import { SourceSerif4_400Regular, SourceSerif4_600SemiBold } from '@expo-google-fonts/source-serif-4';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
@@ -65,6 +65,33 @@ function DatabaseGate({ children, onSettled }: { children: ReactNode; onSettled:
   return <>{children}</>;
 }
 
+/**
+ * Always-present back control. After a refresh or deep link the navigation
+ * stack is empty and the platform back arrow vanishes — this one falls back
+ * to the front page instead of disappearing.
+ */
+function HeaderBack() {
+  const router = useRouter();
+  const { space } = useTheme();
+  return (
+    <Text
+      variant="headline"
+      accessibilityRole="button"
+      accessibilityLabel="Back"
+      onPress={() => {
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace('/');
+        }
+      }}
+      style={{ paddingHorizontal: space.sm, fontSize: 22 }}
+    >
+      ←
+    </Text>
+  );
+}
+
 function ThemedApp({ onDbSettled }: { onDbSettled: () => void }) {
   const theme = useTheme();
 
@@ -84,6 +111,7 @@ function ThemedApp({ onDbSettled }: { onDbSettled: () => void }) {
             headerTitleStyle: { fontFamily: theme.type.title.fontFamily, fontSize: 19 },
             headerShadowVisible: false,
             contentStyle: { backgroundColor: theme.colors.bg },
+            headerLeft: () => <HeaderBack />,
           }}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

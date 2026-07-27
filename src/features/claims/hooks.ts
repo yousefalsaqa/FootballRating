@@ -16,9 +16,11 @@ import {
   resolveClaim,
   type ClaimFilter,
   type CreateClaimInput,
+  type ResolutionEvidence,
   type ScoringRow,
 } from '@/features/claims/repository';
 import { queryKeys } from '@/lib/query-client';
+import { syncSignal } from '@/lib/sync-signal';
 
 export { claimStoryKey, deleteDuplicateClaims } from '@/features/claims/repository';
 
@@ -80,6 +82,9 @@ function useInvalidateClaims() {
     void client.invalidateQueries({ queryKey: queryKeys.claims.all });
     void client.invalidateQueries({ queryKey: queryKeys.scores.all });
     void client.invalidateQueries({ queryKey: queryKeys.tags.all });
+    // Every edit pushes to the shared ledger right away — other devices
+    // shouldn't wait for the next timed cycle.
+    syncSignal.request();
   };
 }
 
@@ -118,8 +123,15 @@ export function useCreateClaim() {
 export function useResolveClaim() {
   const invalidate = useInvalidateClaims();
   return useMutation({
-    mutationFn: ({ id, outcome }: { id: string; outcome: ClaimOutcome }) =>
-      resolveClaim(id, outcome),
+    mutationFn: ({
+      id,
+      outcome,
+      evidence,
+    }: {
+      id: string;
+      outcome: ClaimOutcome;
+      evidence?: ResolutionEvidence;
+    }) => resolveClaim(id, outcome, evidence),
     onSuccess: invalidate,
   });
 }

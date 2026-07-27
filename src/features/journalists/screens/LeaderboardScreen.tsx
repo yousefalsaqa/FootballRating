@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useAcceptIncoming, useInboxEnabled, usePostLookup } from '@/features/inbox/hooks';
+import { submitReport, useAcceptIncoming, useInboxEnabled, usePostLookup } from '@/features/inbox/hooks';
+import { useEditorMode } from '@/features/settings/hooks';
 import { TierBadge } from '@/features/journalists/components/TierBadge';
 import { useRankedJournalists, type RankedJournalist } from '@/features/journalists/hooks';
 import { formatDate, formatMovement, formatScore } from '@/lib/format';
@@ -240,7 +241,31 @@ export function LeaderboardScreen() {
     );
   }, [author, data]);
   const acceptIncoming = useAcceptIncoming();
+  const editor = useEditorMode();
   const postClaim = author?.claim ?? null;
+  const [postSubmitted, setPostSubmitted] = useState(false);
+
+  const fileOrSubmitPostClaim = () => {
+    if (!postClaim || !postMatch) {
+      return;
+    }
+    if (editor) {
+      acceptIncoming(
+        { id: `post:${igPostUrl}`, journalistId: postMatch.id, ...postClaim },
+        (claim) => router.push(`/claim/${claim.id}`),
+      );
+      return;
+    }
+    void submitReport({
+      journalistName: postMatch.name,
+      playerName: postClaim.playerName,
+      toClubName: postClaim.toClubName,
+      fromClubName: postClaim.fromClubName,
+      league: postClaim.league,
+      headline: postClaim.headline,
+      sourceUrl: postClaim.sourceUrl,
+    }).then(() => setPostSubmitted(true));
+  };
 
   // "Paste it and it takes me there": jump straight to the dossier the moment
   // a pasted link identifies a tracked reporter. Posts that carry a fileable
@@ -357,7 +382,7 @@ export function LeaderboardScreen() {
             paddingVertical: 4,
           }}
         >
-          File a claim
+          {editor ? 'File a claim' : 'Submit a report'}
         </Text>
       </View>
       {searchOpen ? (
@@ -403,15 +428,17 @@ export function LeaderboardScreen() {
                     <Text variant="secondary" color="inkSecondary">
                       Post by {author.name ?? `@${author.username}`} — not in the record yet.
                     </Text>
-                    <Text
-                      variant="caption"
-                      color="ink"
-                      onPress={() => router.push('/journalist/new')}
-                      accessibilityRole="button"
-                      style={{ textDecorationLine: 'underline' }}
-                    >
-                      Add them →
-                    </Text>
+                    {editor ? (
+                      <Text
+                        variant="caption"
+                        color="ink"
+                        onPress={() => router.push('/journalist/new')}
+                        accessibilityRole="button"
+                        style={{ textDecorationLine: 'underline' }}
+                      >
+                        Add them →
+                      </Text>
+                    ) : null}
                   </View>
                 )}
                 {postClaim && postMatch ? (
@@ -436,16 +463,7 @@ export function LeaderboardScreen() {
                       variant="stamp"
                       color="ink"
                       accessibilityRole="button"
-                      onPress={() =>
-                        acceptIncoming(
-                          {
-                            id: `post:${igPostUrl}`,
-                            journalistId: postMatch.id,
-                            ...postClaim,
-                          },
-                          (claim) => router.push(`/claim/${claim.id}`),
-                        )
-                      }
+                      onPress={fileOrSubmitPostClaim}
                       style={{
                         alignSelf: 'flex-start',
                         borderWidth: rules.medium,
@@ -455,7 +473,7 @@ export function LeaderboardScreen() {
                         marginTop: space.xs,
                       }}
                     >
-                      File this claim
+                      {editor ? 'File this claim' : postSubmitted ? 'Submitted for review ✓' : 'Submit this report'}
                     </Text>
                   </View>
                 ) : null}
@@ -473,15 +491,17 @@ export function LeaderboardScreen() {
                 <Text variant="secondary" color="inkSecondary">
                   No reporter with handle @{pastedHandle} in the record.
                 </Text>
-                <Text
-                  variant="caption"
-                  color="ink"
-                  onPress={() => router.push('/journalist/new')}
-                  accessibilityRole="button"
-                  style={{ textDecorationLine: 'underline' }}
-                >
-                  Add them →
-                </Text>
+                {editor ? (
+                  <Text
+                    variant="caption"
+                    color="ink"
+                    onPress={() => router.push('/journalist/new')}
+                    accessibilityRole="button"
+                    style={{ textDecorationLine: 'underline' }}
+                  >
+                    Add them →
+                  </Text>
+                ) : null}
               </View>
             )
           ) : null}

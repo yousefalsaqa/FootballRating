@@ -51,6 +51,16 @@ export const claims = sqliteTable(
       .default('pending'),
     outcome: text('outcome', { enum: CLAIM_OUTCOMES }),
     resolvedAt: integer('resolved_at'),
+    /** Why the verdict was reached (written by auto-resolve). */
+    resolutionNote: text('resolution_note'),
+    /** Coverage that decided the verdict — shown as "read why" on the claim. */
+    resolutionSourceUrl: text('resolution_source_url'),
+    /**
+     * When the editor overruled a verdict back to pending. A reopened claim
+     * is editor territory: auto-resolve skips it and sync never lets an
+     * older verdict resurrect it.
+     */
+    reopenedAt: integer('reopened_at'),
     createdAt: integer('created_at').notNull(),
   },
   (table) => [

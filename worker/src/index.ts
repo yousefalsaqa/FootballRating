@@ -37,6 +37,11 @@ export interface ClaimDraft {
   confidence: 1 | 2 | 3;
   sourceUrl: string;
   reportedAt: number;
+  /** Reader submission the bot couldn't fully vouch for — editor approves. */
+  needsReview?: boolean;
+  /** Set on reader submissions (with journalistName as a display fallback). */
+  submitted?: boolean;
+  journalistName?: string;
 }
 
 const MAX_ITEMS_PER_RUN = 8;
@@ -299,9 +304,9 @@ interface ResolveRequestClaim {
 
 const RESOLUTION_PROMPT = `You judge the outcomes of football transfer claims for a reliability tracker.
 
-Input: a JSON array of claims, each with {id, claim, reportedDaysAgo, evidence} where evidence is news headlines about that player.
+Input: a JSON array of claims, each with {id, claim, reportedDaysAgo, evidence} where evidence is news headlines about that player, each with daysAgo (its age). RECENT evidence outweighs old evidence — judge from the newest reliable items; an old rumour contradicted by newer coverage is decided by the newer coverage.
 
-For each claim decide the outcome from the balance of the evidence:
+For each claim decide the outcome from the balance of the evidence (evidence items are numbered):
 - "true": the evidence indicates the reported move/agreement happened — official announcement, "here we go", unveiled, medical, "signs"/"joins"/"completes", or coverage now treats the player as being at the claimed club.
 - "false": the evidence indicates it did not happen — the deal collapsed or was called off, the player joined a DIFFERENT club instead, or the story is weeks old and coverage clearly moved on to other destinations with no sign of the claimed move.
 - "partial": the essentials happened but materially different (loan instead of permanent, different terms, delayed to a later window).
@@ -309,24 +314,37 @@ For each claim decide the outcome from the balance of the evidence:
 
 Prefer a definitive verdict when the evidence leans one way — this tracker depends on claims actually getting graded. Reserve "unknown" for genuinely open, still-developing stories or empty evidence.
 
-Reply with ONLY a JSON array: [{"id": string, "outcome": "true"|"partial"|"false"|"unknown"}].`;
+Reply with ONLY a JSON array:
+[{"id": string, "outcome": "true"|"partial"|"false"|"unknown", "reason": string, "evidenceIndex": number|null}]
+where "reason" is ONE plain-language sentence explaining the verdict (empty string for unknown) and "evidenceIndex" is the number of the single evidence item that best supports it (null if none).`;
 
 const MAX_RESOLVE_CLAIMS = 5;
 const RESOLVE_EVIDENCE_TITLES = 18;
 
 /** Gathers headline evidence and asks the model to rule on pending claims. */
-async function resolveClaims(
-  env: Env,
-  requested: ResolveRequestClaim[],
-): Promise<{ id: string; outcome: string }[]> {
+interface ResolveVerdict {
+  id: string;
+  outcome: string;
+  reason: string | null;
+  evidenceTitle: string | null;
+  evidenceUrl: string | null;
+}
+
+async function resolveClaims(env: Env, requested: ResolveRequestClaim[]): Promise<ResolveVerdict[]> {
   const batch = requested.slice(0, MAX_RESOLVE_CLAIMS);
   const now = Date.now();
-  const payload: { id: string; claim: string; reportedDaysAgo: number | null; evidence: string[] }[] = [];
+  const evidenceByClaim = new Map<string, { title: string; link: string; pubDate: number }[]>();
+  const payload: {
+    id: string;
+    claim: string;
+    reportedDaysAgo: number | null;
+    evidence: { index: number; title: string; daysAgo: number }[];
+  }[] = [];
   for (const claim of batch) {
     // Two angles: the claimed destination, and the player alone — the latter
     // surfaces where they ACTUALLY ended up, which is what "false" needs.
     const queries = [`"${claim.playerName}" ${claim.toClubName}`, `"${claim.playerName}" transfer`];
-    const evidence: string[] = [];
+    const evidence: { title: string; link: string; pubDate: number }[] = [];
     for (const query of queries) {
       try {
         const response = await fetch(
@@ -336,8 +354,8 @@ async function resolveClaims(
         if (response.ok) {
           const xml = await response.text();
           for (const item of parseRssItems(xml)) {
-            if (!evidence.includes(item.title)) {
-              evidence.push(item.title);
+            if (!evidence.some((e) => e.title === item.title)) {
+              evidence.push({ title: item.title, link: item.link, pubDate: item.pubDate });
             }
           }
         }
@@ -345,11 +363,18 @@ async function resolveClaims(
         console.error(`Evidence fetch failed for ${claim.playerName}`, error);
       }
     }
+    // Newest first, so the cap keeps the freshest coverage.
+    const capped = evidence.sort((a, b) => b.pubDate - a.pubDate).slice(0, RESOLVE_EVIDENCE_TITLES);
+    evidenceByClaim.set(claim.id, capped);
     payload.push({
       id: claim.id,
       claim: claim.headline,
       reportedDaysAgo: claim.claimedAt ? Math.round((now - claim.claimedAt) / 86_400_000) : null,
-      evidence: evidence.slice(0, RESOLVE_EVIDENCE_TITLES),
+      evidence: capped.map((e, index) => ({
+        index,
+        title: e.title,
+        daysAgo: Math.max(0, Math.round((now - e.pubDate) / 86_400_000)),
+      })),
     });
   }
   let text: string;
@@ -361,10 +386,26 @@ async function resolveClaims(
   }
   const arrayMatch = text.match(/\[[\s\S]*\]/);
   try {
-    const parsed = JSON.parse(arrayMatch ? arrayMatch[0] : text) as { id?: string; outcome?: string }[];
+    const parsed = JSON.parse(arrayMatch ? arrayMatch[0] : text) as {
+      id?: string;
+      outcome?: string;
+      reason?: string;
+      evidenceIndex?: number | null;
+    }[];
     return parsed
       .filter((v) => typeof v.id === 'string' && ['true', 'partial', 'false', 'unknown'].includes(v.outcome ?? ''))
-      .map((v) => ({ id: v.id as string, outcome: v.outcome as string }));
+      .map((v) => {
+        const cited = typeof v.evidenceIndex === 'number'
+          ? evidenceByClaim.get(v.id as string)?.[v.evidenceIndex]
+          : undefined;
+        return {
+          id: v.id as string,
+          outcome: v.outcome as string,
+          reason: typeof v.reason === 'string' && v.reason.trim() ? v.reason.trim().slice(0, 300) : null,
+          evidenceTitle: cited?.title ?? null,
+          evidenceUrl: cited?.link ?? null,
+        };
+      });
   } catch {
     console.error('Unparseable resolution output', text.slice(0, 200));
     return [];
@@ -505,19 +546,15 @@ export default {
         headers: { ...CORS_HEADERS, 'Access-Control-Allow-Headers': 'content-type, x-ledger-key' },
       });
     }
-    // Shared ledger: one KV-stored snapshot all the user's devices merge into.
-    // The first passcode to write claims the ledger; every call must match it.
+    // Shared ledger: THE record. Reading is public (the site is a newspaper);
+    // writing requires the editor passcode — the first passcode to write
+    // claims the ledger, and every later write must match it. A GET that
+    // includes a key validates it (the app's staff sign-in check).
     if (url.pathname === '/ledger') {
       const key = request.headers.get('x-ledger-key')?.trim() ?? '';
-      if (!key) {
-        return new Response(JSON.stringify({ error: 'missing key' }), {
-          status: 401,
-          headers: CORS_HEADERS,
-        });
-      }
-      const keyHash = await sha1(`ledger-key:${key}`);
+      const keyHash = key ? await sha1(`ledger-key:${key}`) : null;
       const claimedHash = await env.INGEST_KV.get('ledger:keyhash');
-      if (claimedHash && claimedHash !== keyHash) {
+      if (keyHash && claimedHash && claimedHash !== keyHash) {
         return new Response(JSON.stringify({ error: 'wrong key' }), {
           status: 403,
           headers: CORS_HEADERS,
@@ -530,6 +567,12 @@ export default {
         });
       }
       if (request.method === 'PUT') {
+        if (!keyHash) {
+          return new Response(JSON.stringify({ error: 'missing key' }), {
+            status: 401,
+            headers: CORS_HEADERS,
+          });
+        }
         const body = await request.text();
         if (body.length > 4 * 1024 * 1024) {
           return new Response(JSON.stringify({ error: 'too large' }), {
@@ -568,6 +611,70 @@ export default {
       const postUrl = url.searchParams.get('url') ?? '';
       const lookup = await lookupInstagramPost(env, postUrl);
       return new Response(JSON.stringify(lookup), { headers: CORS_HEADERS });
+    }
+    // Reader-submitted report: the bot (extraction model) vets it. Clean
+    // submissions flow onto the wire like any other draft; ones the bot
+    // can't vouch for are flagged for the editor's approval.
+    if (url.pathname === '/submit' && request.method === 'POST') {
+      let body: Record<string, unknown>;
+      try {
+        body = (await request.json()) as Record<string, unknown>;
+      } catch {
+        return new Response(JSON.stringify({ error: 'not json' }), { status: 400, headers: CORS_HEADERS });
+      }
+      const str = (v: unknown, max = 120): string =>
+        typeof v === 'string' ? v.trim().slice(0, max) : '';
+      const journalistName = str(body.journalistName);
+      const playerName = str(body.playerName);
+      const toClubName = str(body.toClubName);
+      if (!journalistName || !playerName || !toClubName) {
+        return new Response(JSON.stringify({ error: 'journalistName, playerName and toClubName are required' }), {
+          status: 400,
+          headers: CORS_HEADERS,
+        });
+      }
+      const fromClubName = str(body.fromClubName) || null;
+      const sourceUrl = str(body.sourceUrl, 500);
+      const roster = journalists.find((j) => j.name.toLowerCase() === journalistName.toLowerCase());
+      const headline =
+        str(body.headline) ||
+        `${playerName}${fromClubName ? ` from ${fromClubName}` : ''} to ${toClubName}`;
+      const extracted = (
+        await extractClaims(env, [
+          {
+            journalistId: roster?.id ?? '',
+            journalistName,
+            title: `${journalistName}: ${headline}`,
+            link: sourceUrl,
+            pubDate: Date.now(),
+          },
+        ])
+      )[0];
+      const vetted = Boolean(extracted && roster);
+      const draft: ClaimDraft = {
+        ...(extracted ?? {
+          id: `${roster?.id ?? slugify(journalistName)}:${slugify(`${playerName}-${toClubName}`)}`,
+          journalistId: roster?.id ?? '',
+          headline: headline.slice(0, 120),
+          playerName,
+          fromClubName,
+          toClubName,
+          league: str(body.league) || null,
+          confidence: 1 as const,
+          sourceUrl,
+          reportedAt: Date.now(),
+        }),
+        journalistId: roster?.id ?? '',
+        needsReview: !vetted,
+        submitted: true,
+        journalistName,
+      };
+      await env.INGEST_KV.put(`draft:${draft.id}`, JSON.stringify(draft), {
+        expirationTtl: DRAFT_TTL_SECONDS,
+      });
+      return new Response(JSON.stringify({ accepted: true, needsReview: draft.needsReview }), {
+        headers: CORS_HEADERS,
+      });
     }
     if (url.pathname === '/claims') {
       return new Response(JSON.stringify({ claims: await listDrafts(env) }), {

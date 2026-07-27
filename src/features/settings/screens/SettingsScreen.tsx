@@ -7,7 +7,7 @@ import { DAILY_BUDGET } from '@/features/football/cache';
 import { useApiUsage } from '@/features/football/hooks';
 import { exportDataToFile, importDataFromFile } from '@/features/settings/data-export';
 import { useSettingsStore } from '@/features/settings/store';
-import { lastSyncedAt, syncLedger } from '@/features/settings/sync';
+import { lastSyncedAt, syncLedger, verifyLedgerKey } from '@/features/settings/sync';
 import { formatDate } from '@/lib/format';
 import { Button, Card, KeyValueRow, Screen, SearchInput, SegmentedControl, Text } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
@@ -62,16 +62,70 @@ export function SettingsScreen() {
     }
   };
 
-  const enableSync = () => {
+  const signIn = async () => {
     const key = passcodeDraft.trim();
     if (key.length < 4) {
-      setSyncMessage('Pick a passcode of at least 4 characters.');
+      setSyncMessage('The passcode is at least 4 characters.');
+      return;
+    }
+    setSyncBusy(true);
+    setSyncMessage(null);
+    const valid = await verifyLedgerKey(key);
+    if (valid === false) {
+      setSyncMessage('Wrong passcode.');
+      setSyncBusy(false);
+      return;
+    }
+    if (valid === null) {
+      setSyncMessage('Could not reach the service — try again in a minute.');
+      setSyncBusy(false);
       return;
     }
     setSyncKey(key);
     setPasscodeDraft('');
+    setSyncBusy(false);
     void runSync();
   };
+
+  // The Desk is staff-only: without the ledger passcode, this tab is just a
+  // sign-in door — no settings, no data controls.
+  if (!syncKey) {
+    return (
+      <Screen>
+        <View style={{ gap: space.xl, paddingTop: space.lg }}>
+          <View style={{ gap: space.xs }}>
+            <Text variant="kicker" color="danger">
+              Staff only
+            </Text>
+            <Text variant="title">The Desk</Text>
+            <Text variant="secondary" color="inkTertiary">
+              The Transfer Ledger is maintained by its editor. Readers can browse everything and
+              submit reports from the front page — running the desk requires the editor passcode.
+            </Text>
+          </View>
+          <View style={{ gap: space.sm }}>
+            <SearchInput
+              placeholder="Editor passcode…"
+              value={passcodeDraft}
+              onChangeText={setPasscodeDraft}
+              secureTextEntry
+              accessibilityLabel="Editor passcode"
+            />
+            <Button
+              label={syncBusy ? 'Checking…' : 'Sign in'}
+              onPress={() => void signIn()}
+              disabled={syncBusy || passcodeDraft.trim().length === 0}
+            />
+            {syncMessage ? (
+              <Text variant="secondary" color="inkSecondary">
+                {syncMessage}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      </Screen>
+    );
+  }
 
   const runExport = async () => {
     setBusy(true);
@@ -155,51 +209,27 @@ export function SettingsScreen() {
 
         <View style={{ gap: space.sm }}>
           <Text variant="caption" color="inkTertiary">
-            Sync across devices
+            The ledger
           </Text>
-          {syncKey ? (
-            <View style={{ gap: space.sm }}>
-              <Card>
-                <KeyValueRow label="Status" value="On" />
-                <KeyValueRow label="Last synced" value={syncedAt ? formatDate(syncedAt) : '—'} />
-              </Card>
-              <Button
-                label={syncBusy ? 'Syncing…' : 'Sync now'}
-                variant="secondary"
-                onPress={() => void runSync()}
-                disabled={syncBusy}
-              />
-              <Button
-                label="Turn off sync"
-                variant="secondary"
-                onPress={() => {
-                  setSyncKey(null);
-                  setSyncMessage('Sync is off. Your record stays on this device.');
-                }}
-                disabled={syncBusy}
-              />
-            </View>
-          ) : (
-            <View style={{ gap: space.sm }}>
-              <Text variant="secondary" color="inkTertiary">
-                One shared record for all your devices. Pick a passcode here, then enter the same
-                passcode on your other device — claims, verdicts, and journalists merge both ways
-                every few minutes.
-              </Text>
-              <SearchInput
-                placeholder="Choose a sync passcode…"
-                value={passcodeDraft}
-                onChangeText={setPasscodeDraft}
-                accessibilityLabel="Sync passcode"
-              />
-              <Button
-                label="Turn on sync"
-                variant="secondary"
-                onPress={enableSync}
-                disabled={syncBusy || passcodeDraft.trim().length === 0}
-              />
-            </View>
-          )}
+          <Card>
+            <KeyValueRow label="Signed in" value="Editor" />
+            <KeyValueRow label="Last synced" value={syncedAt ? formatDate(syncedAt) : '—'} />
+          </Card>
+          <Button
+            label={syncBusy ? 'Syncing…' : 'Sync now'}
+            variant="secondary"
+            onPress={() => void runSync()}
+            disabled={syncBusy}
+          />
+          <Button
+            label="Sign out on this device"
+            variant="secondary"
+            onPress={() => {
+              setSyncKey(null);
+              setSyncMessage(null);
+            }}
+            disabled={syncBusy}
+          />
           {syncMessage ? (
             <Text variant="secondary" color="inkSecondary">
               {syncMessage}

@@ -14,6 +14,7 @@ import {
   useIncomingClaims,
   useResolveAllPending,
 } from '@/features/inbox/hooks';
+import { useEditorMode } from '@/features/settings/hooks';
 import { useSettingsStore } from '@/features/settings/store';
 import { useJournalists } from '@/features/journalists/hooks';
 import { Chip, Divider, EmptyState, Screen, SegmentedControl, Skeleton, Text } from '@/ui/components';
@@ -25,6 +26,7 @@ export function ClaimsScreen() {
   const { colors, rules, space } = useTheme();
   const insets = useSafeAreaInsets();
   const inboxEnabled = useInboxEnabled();
+  const editor = useEditorMode();
   const [section, setSection] = useState<'incoming' | 'pending' | 'resolved'>('pending');
   const status = section === 'resolved' ? 'resolved' : 'pending';
   const [journalistFilter, setJournalistFilter] = useState<string | null>(null);
@@ -40,6 +42,15 @@ export function ClaimsScreen() {
     const map = new Map<string, string>();
     for (const j of journalistsQuery.data ?? []) {
       map.set(j.id, j.name);
+    }
+    return map;
+  }, [journalistsQuery.data]);
+
+  // Reader submissions may arrive naming a journalist without an id — map it back.
+  const journalistIdsByName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const j of journalistsQuery.data ?? []) {
+      map.set(j.name.trim().toLowerCase(), j.id);
     }
     return map;
   }, [journalistsQuery.data]);
@@ -73,7 +84,7 @@ export function ClaimsScreen() {
       <View style={{ paddingVertical: space.md, paddingHorizontal: space.lg, gap: space.md }}>
         <SegmentedControl
           options={
-            inboxEnabled
+            inboxEnabled && editor
               ? ([
                   { value: 'incoming', label: `Incoming${inbox.drafts.length ? ` (${inbox.drafts.length})` : ''}` },
                   { value: 'pending', label: 'Pending' },
@@ -87,7 +98,7 @@ export function ClaimsScreen() {
           value={section}
           onChange={setSection}
         />
-        {section === 'pending' && resolveAll.enabled && resolveAll.pendingCount > 0 ? (
+        {editor && section === 'pending' && resolveAll.enabled && resolveAll.pendingCount > 0 ? (
           <View style={{ gap: 4 }}>
             <Text
               variant="stamp"
@@ -158,8 +169,15 @@ export function ClaimsScreen() {
             renderItem={({ item }) => (
               <IncomingRow
                 draft={item}
-                journalistName={journalistNames.get(item.journalistId)}
-                onAccept={() => acceptIncoming(item)}
+                journalistName={journalistNames.get(item.journalistId) ?? item.journalistName ?? undefined}
+                onAccept={() => {
+                  const journalistId =
+                    item.journalistId ||
+                    journalistIdsByName.get((item.journalistName ?? '').trim().toLowerCase());
+                  if (journalistId) {
+                    acceptIncoming({ ...item, journalistId });
+                  }
+                }}
                 onDismiss={() => inbox.dismiss(item.id)}
               />
             )}
@@ -192,7 +210,7 @@ export function ClaimsScreen() {
               claim={item}
               journalistName={journalistNames.get(item.journalistId)}
               onPress={() => router.push(`/claim/${item.id}`)}
-              onLongPress={() => quickResolve(item)}
+              onLongPress={editor ? () => quickResolve(item) : undefined}
             />
           )}
         />

@@ -59,11 +59,17 @@ export function claimStoryKey(
   ].join('|');
 }
 
+/** The moment of the last deliberate verdict/overrule on a claim. */
+function editorialActionAt(claim: Claim): number {
+  return Math.max(claim.resolvedAt ?? 0, claim.reopenedAt ?? 0);
+}
+
 /**
- * Deletes duplicate filings of the same story (see claimStoryKey), keeping a
- * resolved copy when one exists, else the earliest filing. Duplicates crept
- * in when auto-file's seen-list reset between sessions; the claims table
- * itself is now the dedupe authority.
+ * Deletes duplicate filings of the same story (see claimStoryKey). The copy
+ * with the LATEST editorial action wins (a fresh reopen beats an older
+ * verdict); with no actions anywhere, a resolved copy beats pending, else the
+ * earliest filing stays. Duplicates crept in when auto-file's seen-list reset
+ * between sessions; the claims table itself is now the dedupe authority.
  */
 export async function deleteDuplicateClaims(): Promise<number> {
   const all = await db.select().from(claims).orderBy(claims.createdAt);
@@ -74,7 +80,12 @@ export async function deleteDuplicateClaims(): Promise<number> {
     const kept = keep.get(key);
     if (!kept) {
       keep.set(key, claim);
-    } else if (kept.status === 'pending' && claim.status === 'resolved') {
+    } else if (
+      editorialActionAt(claim) > editorialActionAt(kept) ||
+      (editorialActionAt(claim) === editorialActionAt(kept) &&
+        kept.status === 'pending' &&
+        claim.status === 'resolved')
+    ) {
       doomed.push(kept.id);
       keep.set(key, claim);
     } else {
@@ -108,18 +119,47 @@ export async function createClaim(input: CreateClaimInput, tagNames: string[] = 
   return created;
 }
 
-export async function resolveClaim(id: string, outcome: ClaimOutcome): Promise<void> {
+export interface ResolutionEvidence {
+  /** One-sentence explanation of the verdict. */
+  note?: string | null;
+  /** Coverage that decided it. */
+  sourceUrl?: string | null;
+}
+
+export async function resolveClaim(
+  id: string,
+  outcome: ClaimOutcome,
+  evidence?: ResolutionEvidence,
+): Promise<void> {
   await db
     .update(claims)
-    .set({ status: 'resolved', outcome, resolvedAt: Date.now() })
+    .set({
+      status: 'resolved',
+      outcome,
+      resolvedAt: Date.now(),
+      resolutionNote: evidence?.note ?? null,
+      resolutionSourceUrl: evidence?.sourceUrl ?? null,
+      reopenedAt: null,
+    })
     .where(eq(claims.id, id));
 }
 
-/** Undo a resolution, returning the claim to pending. */
+/**
+ * Undo a resolution, returning the claim to pending. Stamps `reopenedAt` so
+ * the overrule sticks: auto-resolve leaves it alone and sync won't let the
+ * old verdict come back.
+ */
 export async function reopenClaim(id: string): Promise<void> {
   await db
     .update(claims)
-    .set({ status: 'pending', outcome: null, resolvedAt: null })
+    .set({
+      status: 'pending',
+      outcome: null,
+      resolvedAt: null,
+      resolutionNote: null,
+      resolutionSourceUrl: null,
+      reopenedAt: Date.now(),
+    })
     .where(eq(claims.id, id));
 }
 

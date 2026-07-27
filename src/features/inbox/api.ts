@@ -18,6 +18,10 @@ const incomingClaimSchema = z.object({
   confidence: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   sourceUrl: z.string(),
   reportedAt: z.number(),
+  /** Reader submission the bot couldn't vouch for — editor must approve. */
+  needsReview: z.boolean().optional().default(false),
+  submitted: z.boolean().optional().default(false),
+  journalistName: z.string().nullable().optional().default(null),
 });
 
 export type IncomingClaim = z.infer<typeof incomingClaimSchema>;
@@ -34,9 +38,14 @@ const verdictSchema = z.object({
     z.object({
       id: z.string(),
       outcome: z.enum(['true', 'partial', 'false', 'unknown']),
+      reason: z.string().nullable().optional().default(null),
+      evidenceTitle: z.string().nullable().optional().default(null),
+      evidenceUrl: z.string().nullable().optional().default(null),
     }),
   ),
 });
+
+export type ResolutionVerdict = z.infer<typeof verdictSchema>['verdicts'][number];
 
 export interface ResolutionRequest {
   id: string;
@@ -48,9 +57,7 @@ export interface ResolutionRequest {
 }
 
 /** Asks the worker to judge pending claims from recent coverage (max 5). */
-export async function requestResolutions(
-  claims: ResolutionRequest[],
-): Promise<{ id: string; outcome: 'true' | 'partial' | 'false' | 'unknown' }[]> {
+export async function requestResolutions(claims: ResolutionRequest[]): Promise<ResolutionVerdict[]> {
   const base = ingestUrl();
   if (!base || claims.length === 0) {
     return [];
@@ -91,6 +98,38 @@ export async function fetchPostAuthor(postUrl: string): Promise<PostAuthor> {
     throw new Error(`Author lookup failed: ${response.status}`);
   }
   return authorSchema.parse(await response.json());
+}
+
+export interface ReportSubmission {
+  journalistName: string;
+  playerName: string;
+  toClubName: string;
+  fromClubName?: string | null;
+  league?: string | null;
+  headline?: string | null;
+  sourceUrl?: string | null;
+}
+
+/**
+ * Sends a reader-submitted report to the worker, where the bot vets it.
+ * Returns whether it will need the editor's approval before appearing.
+ */
+export async function submitReport(input: ReportSubmission): Promise<{ needsReview: boolean }> {
+  const base = ingestUrl();
+  if (!base) {
+    throw new Error('Submissions unavailable');
+  }
+  const response = await fetch(`${base.replace(/\/$/, '')}/submit`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!response.ok) {
+    throw new Error(`Submission failed: ${response.status}`);
+  }
+  const body = (await response.json()) as { needsReview?: boolean };
+  return { needsReview: body.needsReview ?? true };
 }
 
 export async function fetchIncomingClaims(): Promise<IncomingClaim[]> {

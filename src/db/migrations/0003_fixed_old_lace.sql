@@ -1,0 +1,1 @@
+ALTER TABLE `claims` ADD `reopened_at` integer;

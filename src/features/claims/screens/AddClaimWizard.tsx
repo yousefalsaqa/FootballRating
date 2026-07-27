@@ -8,8 +8,10 @@ import { useClaimDraftStore } from '@/features/claims/store';
 import { SuggestionList } from '@/features/football/components';
 import { usePlayerSearch, useTeamSearch } from '@/features/football/hooks';
 import { failureReasonOf } from '@/features/football/types';
+import { submitReport } from '@/features/inbox/hooks';
 import { JournalistAvatar } from '@/features/journalists/components/JournalistAvatar';
 import { useJournalists } from '@/features/journalists/hooks';
+import { useEditorMode } from '@/features/settings/hooks';
 import { CONFIDENCE_LEVELS } from '@/db/schema';
 import { upcomingWindows, windowLabel, type TransferWindow } from '@/lib/dates';
 import {
@@ -80,8 +82,33 @@ export function AddClaimWizard() {
     true,
   ][step] as boolean;
 
+  const editor = useEditorMode();
+  const [submitState, setSubmitState] = useState<'sending' | 'sent' | 'sent-review' | 'failed' | null>(
+    null,
+  );
+
   const save = () => {
     if (!draft.journalistId) {
+      return;
+    }
+    // Readers don't write the record — their report goes to the wire, where
+    // the bot vets it and the editor approves anything questionable.
+    if (!editor) {
+      if (!selectedJournalist) {
+        return;
+      }
+      setSubmitState('sending');
+      submitReport({
+        journalistName: selectedJournalist.name,
+        playerName: draft.playerName.trim(),
+        toClubName: draft.toClubName.trim(),
+        fromClubName: draft.fromClubName.trim() || null,
+        league: draft.league.trim() || null,
+        headline: draft.headline.trim() || transferLine,
+        sourceUrl: draft.sourceUrl.trim() || null,
+      })
+        .then(({ needsReview }) => setSubmitState(needsReview ? 'sent-review' : 'sent'))
+        .catch(() => setSubmitState('failed'));
       return;
     }
     const headline = draft.headline.trim() || transferLine;
@@ -135,11 +162,13 @@ export function AddClaimWizard() {
               value={journalistFilter}
               onChangeText={setJournalistFilter}
             />
-            <Button
-              label="New journalist"
-              variant="secondary"
-              onPress={() => router.push('/journalist/new')}
-            />
+            {editor ? (
+              <Button
+                label="New journalist"
+                variant="secondary"
+                onPress={() => router.push('/journalist/new')}
+              />
+            ) : null}
             {journalists.length === 0 ? (
               <EmptyState
                 title="No journalists"
@@ -315,20 +344,47 @@ export function AddClaimWizard() {
           </Card>
         ) : null}
 
-        <View style={{ gap: space.md }}>
-          {step < STEPS.length - 1 ? (
+        {submitState === 'sent' || submitState === 'sent-review' ? (
+          <View style={{ gap: space.md }}>
+            <Text variant="body" color="inkSecondary">
+              {submitState === 'sent'
+                ? 'Report submitted — it passed the automated check and will appear on the wire shortly.'
+                : 'Report submitted — the automated check flagged it, so the editor will review it before it appears.'}
+            </Text>
             <Button
-              label="Continue"
-              onPress={() => setStep(step + 1)}
-              disabled={!canContinue}
+              label="Done"
+              onPress={() => {
+                resetDraft();
+                router.back();
+              }}
             />
-          ) : (
-            <Button label="Save claim" onPress={save} haptic disabled={createMutation.isPending} />
-          )}
-          {step > 0 ? (
-            <Button label="Back" variant="ghost" onPress={() => setStep(step - 1)} />
-          ) : null}
-        </View>
+          </View>
+        ) : (
+          <View style={{ gap: space.md }}>
+            {submitState === 'failed' ? (
+              <Text variant="secondary" color="danger">
+                Could not submit the report — check your connection and try again.
+              </Text>
+            ) : null}
+            {step < STEPS.length - 1 ? (
+              <Button
+                label="Continue"
+                onPress={() => setStep(step + 1)}
+                disabled={!canContinue}
+              />
+            ) : (
+              <Button
+                label={editor ? 'Save claim' : 'Submit for review'}
+                onPress={save}
+                haptic
+                disabled={createMutation.isPending || submitState === 'sending'}
+              />
+            )}
+            {step > 0 ? (
+              <Button label="Back" variant="ghost" onPress={() => setStep(step - 1)} />
+            ) : null}
+          </View>
+        )}
       </View>
     </Screen>
   );

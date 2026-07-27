@@ -41,6 +41,9 @@ const claimSnapshot = z.object({
   status: z.enum(['pending', 'resolved']),
   outcome: z.enum(['true', 'partial', 'false']).nullable(),
   resolvedAt: z.number().nullable(),
+  resolutionNote: z.string().nullable().optional().default(null),
+  resolutionSourceUrl: z.string().nullable().optional().default(null),
+  reopenedAt: z.number().nullable().optional().default(null),
   createdAt: z.number(),
 });
 
@@ -105,7 +108,14 @@ export async function importSnapshot(snapshot: ExportSnapshot): Promise<ImportRe
   }
 
   // Claims: new ids only, journalist id remapped where it merged by name.
-  const localClaimRows = await db.select({ id: claims.id, status: claims.status }).from(claims);
+  const localClaimRows = await db
+    .select({
+      id: claims.id,
+      status: claims.status,
+      resolvedAt: claims.resolvedAt,
+      reopenedAt: claims.reopenedAt,
+    })
+    .from(claims);
   const existingClaims = new Set(localClaimRows.map((r) => r.id));
   const newClaims = snapshot.claims
     .map((c) => ({ ...c, journalistId: journalistIdRemap.get(c.journalistId) ?? c.journalistId }))
@@ -114,15 +124,42 @@ export async function importSnapshot(snapshot: ExportSnapshot): Promise<ImportRe
     await db.insert(claims).values(newClaims);
   }
 
-  // Resolutions propagate: a claim we both hold (same id) that the snapshot
-  // has resolved and we still have pending takes the snapshot's verdict.
-  const pendingLocal = new Set(localClaimRows.filter((r) => r.status === 'pending').map((r) => r.id));
+  // Editorial state propagates between same-id copies: whichever side acted
+  // LAST wins — a newer verdict overwrites, and a newer reopen un-resolves
+  // (the editor's overrule must never be resurrected by an old verdict).
+  const actionAt = (row: { resolvedAt: number | null; reopenedAt: number | null }) =>
+    Math.max(row.resolvedAt ?? 0, row.reopenedAt ?? 0);
+  const localById = new Map(localClaimRows.map((r) => [r.id, r]));
   let resolutions = 0;
   for (const c of snapshot.claims) {
-    if (c.status === 'resolved' && c.outcome && pendingLocal.has(c.id)) {
+    const local = localById.get(c.id);
+    if (!local || actionAt(c) <= actionAt(local)) {
+      continue;
+    }
+    if (c.status === 'resolved' && c.outcome) {
       await db
         .update(claims)
-        .set({ status: 'resolved', outcome: c.outcome, resolvedAt: c.resolvedAt ?? c.claimedAt })
+        .set({
+          status: 'resolved',
+          outcome: c.outcome,
+          resolvedAt: c.resolvedAt ?? c.claimedAt,
+          resolutionNote: c.resolutionNote,
+          resolutionSourceUrl: c.resolutionSourceUrl,
+          reopenedAt: null,
+        })
+        .where(eq(claims.id, c.id));
+      resolutions += 1;
+    } else if (c.status === 'pending' && c.reopenedAt) {
+      await db
+        .update(claims)
+        .set({
+          status: 'pending',
+          outcome: null,
+          resolvedAt: null,
+          resolutionNote: null,
+          resolutionSourceUrl: null,
+          reopenedAt: c.reopenedAt,
+        })
         .where(eq(claims.id, c.id));
       resolutions += 1;
     }
