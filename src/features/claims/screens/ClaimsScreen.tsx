@@ -1,0 +1,90 @@
+import { FlashList } from '@shopify/flash-list';
+import { useRouter } from 'expo-router';
+import { useMemo, useState } from 'react';
+import { Alert, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import type { Claim } from '@/db/schema';
+import { ClaimRow } from '@/features/claims/components';
+import { useClaims, useResolveClaim } from '@/features/claims/hooks';
+import { useJournalists } from '@/features/journalists/hooks';
+import { EmptyState, Screen, SegmentedControl, Skeleton } from '@/ui/components';
+import { useTheme } from '@/ui/theme';
+
+/** Claims tab: pending/resolved lists across all journalists. */
+export function ClaimsScreen() {
+  const router = useRouter();
+  const { space } = useTheme();
+  const insets = useSafeAreaInsets();
+  const [status, setStatus] = useState<'pending' | 'resolved'>('pending');
+  const claimsQuery = useClaims({ status });
+  const journalistsQuery = useJournalists();
+  const resolveMutation = useResolveClaim();
+
+  const journalistNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const j of journalistsQuery.data ?? []) {
+      map.set(j.id, j.name);
+    }
+    return map;
+  }, [journalistsQuery.data]);
+
+  const quickResolve = (claim: Claim) => {
+    if (claim.status !== 'pending') {
+      return;
+    }
+    Alert.alert('Resolve claim', claim.headline, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'False', style: 'destructive', onPress: () => resolveMutation.mutate({ id: claim.id, outcome: 'false' }) },
+      { text: 'Partially', onPress: () => resolveMutation.mutate({ id: claim.id, outcome: 'partial' }) },
+      { text: 'Came true', onPress: () => resolveMutation.mutate({ id: claim.id, outcome: 'true' }) },
+    ]);
+  };
+
+  return (
+    <Screen scroll={false}>
+      <View style={{ paddingVertical: space.lg }}>
+        <SegmentedControl
+          options={[
+            { value: 'pending', label: 'Pending' },
+            { value: 'resolved', label: 'Resolved' },
+          ]}
+          value={status}
+          onChange={setStatus}
+        />
+      </View>
+      {claimsQuery.isLoading ? (
+        <View style={{ gap: space.md }}>
+          <Skeleton height={120} />
+          <Skeleton height={120} />
+        </View>
+      ) : (claimsQuery.data ?? []).length === 0 ? (
+        <EmptyState
+          title={status === 'pending' ? 'No pending claims' : 'No resolved claims'}
+          message={
+            status === 'pending'
+              ? 'Log a transfer claim and resolve it once the window shuts.'
+              : 'Resolved claims appear here and feed reliability scores.'
+          }
+          actionLabel={status === 'pending' ? 'Add claim' : undefined}
+          onAction={status === 'pending' ? () => router.push('/claim/new') : undefined}
+        />
+      ) : (
+        <FlashList
+          data={claimsQuery.data}
+          keyExtractor={(claim) => claim.id}
+          contentContainerStyle={{ paddingBottom: insets.bottom + space.xl, paddingHorizontal: 0 }}
+          ItemSeparatorComponent={() => <View style={{ height: space.md }} />}
+          renderItem={({ item }) => (
+            <ClaimRow
+              claim={item}
+              journalistName={journalistNames.get(item.journalistId)}
+              onPress={() => router.push(`/claim/${item.id}`)}
+              onLongPress={() => quickResolve(item)}
+            />
+          )}
+        />
+      )}
+    </Screen>
+  );
+}
